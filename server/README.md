@@ -17,6 +17,7 @@ Edit the two files for local HTTP use:
 | File | Setting | Local value |
 |------|---------|-------------|
 | `.env` | `APP_DOMAIN` | `localhost` |
+| `.env` | `FORWARD_APP_PORT` | `127.0.0.1:8000` (only this machine can reach the server) |
 | `.env` and `laravel.env` | `DB_PASSWORD` | the same random string in both (`openssl rand -hex 16`) |
 | `laravel.env` | `APP_URL` | `"http://localhost:8000"` |
 | `laravel.env` | `APP_FORCE_HTTPS` | `"false"` |
@@ -46,6 +47,14 @@ docker compose up -d --force-recreate
 ```
 
 Open http://localhost:8000, log in, and create an API token under **Profile → API Tokens**.
+
+## Phase 0 pilot: official solidtime desktop app
+
+The requirements doc starts with a one-week pilot using the official solidtime desktop app. It signs in through OAuth, which needs a public client (run once, then enter the printed client id in the desktop app's settings):
+
+```bash
+docker compose exec scheduler php artisan passport:client --name=desktop --redirect_uri=solidtime://oauth/callback --public -n
+```
 
 ## Demo data
 

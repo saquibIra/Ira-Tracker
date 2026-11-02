@@ -7,7 +7,13 @@ on:
 
 jobs:
   widget:
-    runs-on: macos-latest
+    name: widget (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The requirements doc targets macOS and Windows.
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: widget
@@ -20,15 +26,39 @@ jobs:
           cache-dependency-path: widget/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: widget/src-tauri
       - run: npm ci
-      - run: npm run build
-      - run: cargo fmt --check
+      - name: UI typecheck and build
+        run: npm run build
+      - name: UI unit tests
+        run: npm test
+      - name: Rust format
+        run: cargo fmt --check
         working-directory: widget/src-tauri
-      - run: cargo check --locked
+      - name: Rust lint
+        run: cargo clippy --all-targets --locked -- -D warnings
+        working-directory: widget/src-tauri
+      - name: Rust unit tests
+        run: cargo test --locked
+        working-directory: widget/src-tauri
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: npm audit
+        run: npm audit --audit-level=high
+        working-directory: widget
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
         working-directory: widget/src-tauri
 
   server:
