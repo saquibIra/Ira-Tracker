@@ -36,7 +36,7 @@ Prerequisites: Docker Desktop, Node 20+, Rust (`rustup`), Xcode command-line too
    ```
    Sign in with a solidtime personal API token (solidtime → Profile → API Tokens). Then press **⌘⇧T** (Cmd+Shift+T) to switch projects.
 
-Full widget test checklist: [widget/README.md](widget/README.md).
+Developer checklist: [widget/README.md](widget/README.md). Full manual test plan (engineer + admin): [docs/MANUAL_TEST_PLAN.md](docs/MANUAL_TEST_PLAN.md).
 
 ## Status
 
