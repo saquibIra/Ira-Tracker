@@ -1,0 +1,27 @@
+# Secrets — never commit (repo is public)
+.env
+*.env
+!*.env.example
+.admin-credentials
+*.pem
+*.key
+
+# Build output
+node_modules/
+dist/
+target/
+
+# Local runtime data
+server/solidtime/logs/*
+!server/solidtime/logs/.gitkeep
+server/solidtime/app-storage/*
+!server/solidtime/app-storage/.gitkeep
+*.db
+*.db-wal
+*.db-shm
+
+# OS / editor
+.DS_Store
+.idea/
+__pycache__/
+.venv/
