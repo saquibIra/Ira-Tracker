@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-Working notes for Claude Code on the Ira Tracker project. Read README.md for the overview and docs/STATUS.md for requirement status (IDs W1–W15, R1–R6 come from the requirements doc).
+Working notes for Claude Code on the Ira Tracker project. Read README.md for the overview and docs/STATUS.md for the compliance matrix (IDs W1–W15, R1–R6 come from the requirements doc).
+
+**Scope rule:** the requirements document (Arvind, 31 Oct 2026) is the source of truth. Build what it asks for; before adding anything else, check it against the document and say so. Engineering quality (tests, security, CI, performance, migrations) is always in scope.
 
 ## What this is
 
@@ -18,9 +20,13 @@ docker compose exec scheduler php artisan tinker --execute='...'   # inspect dat
 
 # widget
 cd widget && npm run tauri dev        # run (tray app; no Dock icon)
+IRA_IDLE_SECS=30 npm run tauri dev    # idle prompt after 30 s instead of 10 min (testing W6/W7)
 cd widget && npm run build            # typecheck + build UI
-cd widget/src-tauri && cargo check    # fast Rust check
+cd widget && npm test                 # UI unit tests (vitest, src/*.test.ts)
+cd widget/src-tauri && cargo test     # Rust unit tests
+cd widget/src-tauri && cargo clippy --all-targets -- -D warnings
 cd widget/src-tauri && cargo fmt      # format before committing
+cd widget/src-tauri && cargo audit; cd widget && npm audit   # dependency vulnerabilities
 
 # local widget DB
 sqlite3 ~/Library/Application\ Support/com.ira.tracker/tracker.db
@@ -30,10 +36,14 @@ Rust is installed via rustup; run `source ~/.cargo/env` in a fresh shell if `car
 
 ## Widget architecture
 
-- `db.rs` — SQLite (WAL, synchronous=FULL). Table `entry` is the offline queue and local source of truth. Every local change sets `dirty=1` and bumps `rev`; sync clears `dirty` only if `rev` is unchanged. Rows rejected by the server (4xx) get `error`/`error_rev` and are skipped until edited again. Starting a timer closes the running one in the same transaction (no overlaps); zero-length entries are dropped.
+- `db.rs` — SQLite (WAL, synchronous=FULL). Schema changes go through `MIGRATIONS` (tracked in `PRAGMA user_version`): append a step, never edit a released one. Table `entry` is the offline queue and local source of truth. Every local change sets `dirty=1` and bumps `rev`; sync clears `dirty` only if `rev` is unchanged. Rows rejected by the server (4xx) get `error`/`error_rev` and are skipped until edited again. Starting a timer closes the running one in the same transaction (no overlaps); zero-length entries are dropped.
+- Creates are duplicate-safe: `create_attempted` is set before POST; on retry the sync looks the entry up by exact start time before creating again.
+- `idle.rs` — W6/W7. `Detector` is a pure state machine (unit-tested); `monitor` feeds it the clock and the OS idle seconds (CoreGraphics on macOS, `GetLastInputInfo` on Windows). Sleep = wall-clock jump between checks.
+- `input.rs` — validation at the command boundary (server URL must be HTTPS unless localhost; descriptions single-line, ≤ 500 chars).
+- `src/lib.ts` — pure UI helpers (escaping, colour validation, fuzzy search), unit-tested; `src/main.ts` renders windows.
 - `api.rs` — solidtime client. `ApiError::Offline` (network/5xx → retry), `Auth` (401), `Rejected` (other 4xx → don't retry unchanged).
-- `lib.rs` — app state, tray menu, commands (`get_state`, `start_timer`, `stop_timer`, `set_description`, `sign_in`, `sign_out`), sync loop, window management.
-- Windows (`switcher`, `login`) are created on demand and destroyed on close/blur to keep idle memory low. The window label selects the view in `main.ts`.
+- `lib.rs` — app state, tray menu, commands (`get_state`, `start_timer`, `stop_timer`, `set_description`, `sign_in`, `sign_out`, `get_away`, `resolve_away`), sync loop (≤ 1 sync/min), window management.
+- Windows (`switcher`, `login`, `idle`) are created on demand and destroyed on close/blur to keep idle memory low. The window label selects the view in `main.ts`.
 - After any state change call `changed(app)`: refreshes tray, emits `state-changed` to open windows, kicks the sync loop.
 
 ## solidtime API facts (verified against v1 source)
@@ -52,6 +62,8 @@ Rust is installed via rustup; run `source ~/.cargo/env` in a fresh shell if `car
 - **Privacy:** never capture or send screenshots, keystrokes, mouse activity, window titles or URLs. Repo/branch detection (Phase 2) stays local; only the accepted project + description go to the server.
 - **Performance budget** (acceptance criteria): idle RSS < 50 MB, idle CPU < 0.5 %, startup < 2 s to tray, installer < 15 MB, network at most one batched sync per minute while running and nothing while stopped, no focus stealing (only user-invoked windows take focus).
 - **Offline-first:** user actions write to SQLite first and return instantly; never block UI on the network.
+- **Security:** keep the CSP in `tauri.conf.json` strict; build HTML only with `esc()`/`safeColor()` from `lib.ts`; SQL only with bound parameters; validate every command argument (`input.rs`, catalog checks).
+- **Testing:** pure logic gets unit tests (Rust `#[cfg(test)]`, `src/*.test.ts`); keep I/O (OS, network, windows) in thin wrappers around testable functions. CI runs fmt, clippy, tests and audits on macOS and Windows.
 - **Secrets:** this repo is public. Never commit `.env`, `laravel.env`, `.admin-credentials`, tokens or keys. Tokens live only in the OS keychain (service `com.ira.tracker`, account `solidtime-token`).
 
 ## Gotchas
@@ -66,4 +78,4 @@ Rust is installed via rustup; run `source ~/.cargo/env` in a fresh shell if `car
 - Branches: `main` (released) ← `staging` (pilot/release candidate) ← `develop` (integration) ← `feature/<name>`.
 - Work on a `feature/*` branch from `develop`; open a PR into `develop`. Never commit directly to `main` or `staging`.
 - Commit messages: imperative, prefixed with the area, e.g. `widget: add idle detection (W6)`, `server: ...`, `docs: ...`. Reference requirement IDs where relevant.
-- Before committing: `npm run build` and `cargo check` (and `cargo fmt`) must pass; update docs/STATUS.md when a requirement changes state.
+- Before committing: `npm run build`, `npm test`, `cargo fmt`, `cargo clippy -- -D warnings` and `cargo test` must pass; update docs/STATUS.md when a requirement changes state.

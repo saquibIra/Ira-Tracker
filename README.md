@@ -24,7 +24,7 @@ Design principles: *confirm, don't type*; invisible when idle; running timer by 
 
 ## Quick start (local development, macOS)
 
-Prerequisites: Docker Desktop, Node 20+, Rust (`rustup`), Xcode command-line tools.
+Prerequisites: Docker Desktop, Node 20+, Rust (`rustup`), Xcode command-line tools (macOS) or Visual Studio Build Tools + WebView2 (Windows).
 
 1. **Server** — first-time setup steps are in [server/README.md](server/README.md). After that:
    ```bash
@@ -43,13 +43,22 @@ Full widget test checklist: [widget/README.md](widget/README.md).
 | Area | Status |
 |------|--------|
 | solidtime self-hosted locally + demo data | Done |
-| Widget: sign-in, tray, recent list, hotkey switcher, descriptions, offline queue + sync (W1–W5, W9, W10) | Done (macOS, dev mode) |
-| Widget: idle/lock prompt, reminders, end-of-day review (W6–W8, W11) | Next |
-| Widget: auto-start, signed builds, auto-update (W15) | Later |
+| Widget: sign-in, tray state, recent list, hotkey switcher, descriptions, offline queue + sync, idle/lock/sleep prompt (W1–W7, W9, W10) | Done (macOS tested in dev; Windows built in CI) |
+| Widget: end-of-day review, reminders (W8, W11) | Next |
+| Widget: signed builds, auto-update (W15) | Needs code-signing certificates |
 | Reconciliation service (R1–R6, reports) | Planned |
 | Smart suggestions: repo/branch, ticket keys, calendar (W12–W14) | Phase 2 |
 
-Details: [docs/STATUS.md](docs/STATUS.md).
+Full requirement-by-requirement check: [docs/STATUS.md](docs/STATUS.md).
+
+## Tests
+
+```bash
+cd widget && npm test                      # UI unit tests
+cd widget/src-tauri && cargo test          # Rust unit tests
+```
+
+CI (`.github/workflows/ci.yml`) runs formatting, lint, tests and dependency audits on macOS and Windows for every push and pull request.
 
 ## Branches
 
