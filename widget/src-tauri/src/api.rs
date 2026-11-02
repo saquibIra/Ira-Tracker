@@ -69,6 +69,39 @@ pub struct TaskRec {
     pub is_done: bool,
 }
 
+#[derive(Deserialize)]
+struct RawMembership {
+    id: String,
+    role: String,
+    organization: ClientRec,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Membership {
+    pub org_id: String,
+    pub org_name: String,
+    pub member_id: String,
+    pub role: String,
+}
+
+/// solidtime gives every user a personal organization, so an engineer invited to
+/// Ira usually has two memberships. With one membership it is used directly;
+/// with several, the user must pick (`requested`).
+pub fn choose_membership<'m>(
+    all: &'m [Membership],
+    requested: Option<&str>,
+) -> Result<&'m Membership, String> {
+    match (requested, all) {
+        (_, []) => Err("This account is not a member of any organization".into()),
+        (Some(id), _) => all
+            .iter()
+            .find(|m| m.org_id == id)
+            .ok_or_else(|| "You are not a member of that organization".into()),
+        (None, [only]) => Ok(only),
+        (None, _) => Err("Choose an organization".into()),
+    }
+}
+
 pub struct Api<'a> {
     http: &'a Client,
     base: String,
@@ -115,21 +148,22 @@ impl<'a> Api<'a> {
         format!("{}{}", self.base, path)
     }
 
-    /// Returns (organization_id, member_id) of the user's first membership.
-    pub async fn whoami(&self) -> Result<(String, String), ApiError> {
+    /// Organizations the token's user belongs to.
+    pub async fn memberships(&self) -> Result<Vec<Membership>, ApiError> {
         let v = self
             .send(self.http.get(self.url("/users/me/memberships")))
             .await?;
-        let m = v["data"]
-            .get(0)
-            .ok_or(ApiError::Rejected("No organization membership".into()))?;
-        Ok((
-            m["organization"]["id"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-            m["id"].as_str().unwrap_or_default().to_string(),
-        ))
+        let raw: Vec<RawMembership> = serde_json::from_value(v["data"].clone())
+            .map_err(|e| ApiError::Rejected(e.to_string()))?;
+        Ok(raw
+            .into_iter()
+            .map(|m| Membership {
+                org_id: m.organization.id,
+                org_name: m.organization.name,
+                member_id: m.id,
+                role: m.role,
+            })
+            .collect())
     }
 
     async fn list<T: for<'de> Deserialize<'de>>(
@@ -229,5 +263,41 @@ impl<'a> Api<'a> {
             Err(ApiError::Rejected(m)) if m.starts_with("HTTP 404") => Ok(()),
             r => r.map(|_| ()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn m(org: &str) -> Membership {
+        Membership {
+            org_id: org.into(),
+            org_name: format!("{org} org"),
+            member_id: format!("member-{org}"),
+            role: "employee".into(),
+        }
+    }
+
+    #[test]
+    fn single_membership_is_used() {
+        let all = [m("ira")];
+        assert_eq!(choose_membership(&all, None).unwrap().org_id, "ira");
+    }
+
+    #[test]
+    fn several_memberships_need_a_choice() {
+        let all = [m("personal"), m("ira")];
+        assert!(choose_membership(&all, None).is_err());
+        assert_eq!(
+            choose_membership(&all, Some("ira")).unwrap().member_id,
+            "member-ira"
+        );
+    }
+
+    #[test]
+    fn unknown_or_missing_organization_is_rejected() {
+        assert!(choose_membership(&[m("ira")], Some("other")).is_err());
+        assert!(choose_membership(&[], None).is_err());
     }
 }

@@ -5,6 +5,7 @@ import { LogicalSize } from "@tauri-apps/api/dpi";
 import {
   type Away,
   type Item,
+  type Membership,
   type UiState,
   elapsed,
   esc,
@@ -110,24 +111,51 @@ function renderLogin() {
       <label>API token
         <textarea id="token" rows="4" placeholder="Paste token" autofocus></textarea>
       </label>
+      <label id="org-row" hidden>Organization
+        <select id="org"></select>
+      </label>
       <p id="err" class="error"></p>
       <button id="go" type="submit">Sign in</button>
     </form>`;
   const form = document.getElementById("login") as HTMLFormElement;
   const err = document.getElementById("err")!;
   const go = document.getElementById("go") as HTMLButtonElement;
+  const url = document.getElementById("url") as HTMLInputElement;
+  const token = document.getElementById("token") as HTMLTextAreaElement;
+  const orgRow = document.getElementById("org-row")!;
+  const org = document.getElementById("org") as HTMLSelectElement;
+
+  // Changing the server or token invalidates a previously loaded organization list.
+  const resetOrgs = () => {
+    orgRow.hidden = true;
+    org.innerHTML = "";
+  };
+  url.addEventListener("input", resetOrgs);
+  token.addEventListener("input", resetOrgs);
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     err.textContent = "";
     go.disabled = true;
     go.textContent = "Checking…";
     try {
-      await invoke("sign_in", {
-        baseUrl: (document.getElementById("url") as HTMLInputElement).value,
-        token: (document.getElementById("token") as HTMLTextAreaElement).value,
-      });
+      const args = { baseUrl: url.value, token: token.value };
+      if (orgRow.hidden) {
+        const orgs = await invoke<Membership[]>("list_organizations", args);
+        if (orgs.length > 1) {
+          // solidtime gives every user a personal organization; ask which one to track in.
+          org.innerHTML = orgs
+            .map((o) => `<option value="${esc(o.org_id)}">${esc(o.org_name)} (${esc(o.role)})</option>`)
+            .join("");
+          orgRow.hidden = false;
+          err.textContent = "This account belongs to several organizations. Choose one.";
+          return;
+        }
+      }
+      await invoke("sign_in", { ...args, organizationId: orgRow.hidden ? null : org.value });
     } catch (ex) {
       err.textContent = String(ex);
+    } finally {
       go.disabled = false;
       go.textContent = "Sign in";
     }

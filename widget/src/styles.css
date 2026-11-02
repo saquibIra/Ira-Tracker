@@ -33,7 +33,8 @@ kbd { font-family: inherit; border: 1px solid var(--line); border-radius: 4px; p
 .login h1 { font-size: 18px; margin: 0; }
 .login p { margin: 0; }
 .login label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
-.login input, .login textarea {
+.login [hidden] { display: none; }
+.login input, .login textarea, .login select {
   font-weight: 400; padding: 8px; border: 1px solid var(--line); border-radius: 6px;
   background: transparent; resize: none; font-family: ui-monospace, monospace; font-size: 12px;
 }

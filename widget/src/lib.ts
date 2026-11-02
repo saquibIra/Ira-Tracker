@@ -20,6 +20,13 @@ export interface UiState {
   error: string | null;
 }
 
+export interface Membership {
+  org_id: string;
+  org_name: string;
+  member_id: string;
+  role: string;
+}
+
 export interface Away {
   start: string;
   end: string;

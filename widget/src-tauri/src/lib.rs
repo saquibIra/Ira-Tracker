@@ -424,15 +424,38 @@ fn set_description(app: AppHandle, description: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Organizations available to this token; the sign-in window shows a picker when
+/// there is more than one.
 #[tauri::command]
-async fn sign_in(app: AppHandle, base_url: String, token: String) -> Result<(), String> {
+async fn list_organizations(
+    app: AppHandle,
+    base_url: String,
+    token: String,
+) -> Result<Vec<api::Membership>, String> {
+    let base = input::server_url(&base_url)?;
+    let st = app.state::<AppState>();
+    Api::new(&st.http, &base, token.trim())
+        .memberships()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn sign_in(
+    app: AppHandle,
+    base_url: String,
+    token: String,
+    organization_id: Option<String>,
+) -> Result<(), String> {
     let base = input::server_url(&base_url)?;
     let token = token.trim().to_string();
     let st = app.state::<AppState>();
-    let (org, member) = Api::new(&st.http, &base, &token)
-        .whoami()
+    let all = Api::new(&st.http, &base, &token)
+        .memberships()
         .await
         .map_err(|e| e.to_string())?;
+    let chosen = api::choose_membership(&all, organization_id.as_deref())?;
+    let (org, member) = (chosen.org_id.clone(), chosen.member_id.clone());
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
         .and_then(|k| k.set_password(&token))
         .map_err(|e| format!("Could not save token to keychain: {e}"))?;
@@ -683,6 +706,7 @@ pub fn run() {
             start_timer,
             stop_timer,
             set_description,
+            list_organizations,
             sign_in,
             sign_out,
             idle::get_away,
