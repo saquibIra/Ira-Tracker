@@ -1,62 +1,99 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-
-interface Item {
-  project_id: string;
-  task_id: string | null;
-  project: string;
-  task: string | null;
-  client: string | null;
-  color: string;
-}
-
-interface UiState {
-  signed_in: boolean;
-  base_url: string | null;
-  running: { item: Item | null; description: string; start: string } | null;
-  recent: Item[];
-  items: Item[];
-  pending: number;
-  offline: boolean;
-  error: string | null;
-}
+import { LogicalSize } from "@tauri-apps/api/dpi";
+import {
+  type Away,
+  type Item,
+  type UiState,
+  elapsed,
+  esc,
+  hhmm,
+  itemHtml,
+  label,
+  safeColor,
+  search,
+} from "./lib";
 
 const win = getCurrentWindow();
 const app = document.getElementById("app")!;
 
-const esc = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+// ---------- idle prompt (W6/W7) ----------
 
-const label = (i: Item) => (i.task ? `${i.project} · ${i.task}` : i.project);
-
-function elapsed(start: string): string {
-  const secs = Math.max(0, Math.floor((Date.now() - Date.parse(start)) / 1000));
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-/** Subsequence fuzzy match; higher is better, -1 means no match. */
-function score(query: string, text: string): number {
-  const q = query.toLowerCase();
-  const t = text.toLowerCase();
-  if (!q) return 0;
-  const direct = t.indexOf(q);
-  if (direct >= 0) return 1000 - direct;
-  let ti = 0;
-  let total = 0;
-  let streak = 0;
-  for (const ch of q) {
-    if (ch === " ") continue;
-    const found = t.indexOf(ch, ti);
-    if (found < 0) return -1;
-    streak = found === ti ? streak + 1 : 0;
-    total += 10 + streak * 5 - Math.min(found - ti, 10);
-    ti = found + 1;
+async function renderIdle() {
+  const away = await invoke<Away | null>("get_away");
+  if (!away) {
+    win.close();
+    return;
   }
-  return total;
+  app.innerHTML = `
+    <div class="idle">
+      <div class="idle-head">
+        <b>You were away for ${away.minutes} min</b>
+        <span class="muted">${hhmm(away.start)}–${hhmm(away.end)} · the timer kept running on ${esc(away.label)}</span>
+      </div>
+      <div class="idle-actions">
+        <button data-a="keep" title="Count the away time">Keep</button>
+        <button data-a="discard" title="Remove the away time">Discard</button>
+        <button data-a="assign" title="Move the away time to another project">Assign to…</button>
+      </div>
+      <div id="assign" class="assign" hidden>
+        <input id="aq" class="search" placeholder="Assign away time to…" autocomplete="off" spellcheck="false" />
+        <ul id="alist" class="list"></ul>
+      </div>
+      <p id="err" class="error"></p>
+    </div>`;
+
+  const resolve = async (action: string, item?: Item) => {
+    try {
+      await invoke("resolve_away", {
+        action,
+        projectId: item?.project_id ?? null,
+        taskId: item?.task_id ?? null,
+      });
+    } catch (ex) {
+      document.getElementById("err")!.textContent = String(ex);
+    }
+  };
+
+  let items: Item[] = [];
+  let shown: Item[] = [];
+  let sel = 0;
+  const aq = document.getElementById("aq") as HTMLInputElement;
+  const list = document.getElementById("alist")!;
+  const render = () => {
+    shown = (aq.value.trim() ? search(aq.value.trim(), items) : items).slice(0, 30);
+    sel = Math.min(sel, Math.max(shown.length - 1, 0));
+    list.innerHTML = shown.map((i, idx) => itemHtml(i, idx, idx === sel)).join("");
+    list.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
+    list.querySelectorAll<HTMLLIElement>("li.item").forEach((li) =>
+      li.addEventListener("click", () => resolve("assign", shown[Number(li.dataset.idx)])),
+    );
+  };
+  aq.addEventListener("input", () => {
+    sel = 0;
+    render();
+  });
+  aq.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") sel = Math.min(sel + 1, shown.length - 1);
+    else if (e.key === "ArrowUp") sel = Math.max(sel - 1, 0);
+    else if (e.key === "Enter" && shown[sel]) return resolve("assign", shown[sel]);
+    else return;
+    e.preventDefault();
+    render();
+  });
+
+  app.querySelectorAll<HTMLButtonElement>(".idle-actions button").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (b.dataset.a !== "assign") return resolve(b.dataset.a!);
+      const st = await invoke<UiState>("get_state");
+      items = st.items;
+      document.getElementById("assign")!.hidden = false;
+      await win.setSize(new LogicalSize(400, 440));
+      render();
+      aq.focus();
+    }),
+  );
 }
 
 // ---------- sign-in window ----------
@@ -109,7 +146,7 @@ function renderSwitcher() {
       <div id="running" class="running"></div>
       <input id="q" class="search" placeholder="Switch to project or task…" autocomplete="off" spellcheck="false" />
       <ul id="list" class="list"></ul>
-      <input id="desc" class="desc" placeholder="What are you working on? (optional)" autocomplete="off" />
+      <input id="desc" class="desc" placeholder="What are you working on? (optional)" maxlength="500" autocomplete="off" />
       <div class="hints">
         <span><kbd>↑↓</kbd> select</span><span><kbd>↵</kbd> start</span>
         <span><kbd>Tab</kbd> description</span><span><kbd>Esc</kbd> close</span>
@@ -180,10 +217,10 @@ function renderRunning() {
   el.dataset.start = r.start;
   const name = r.item ? label(r.item) : "No project";
   el.innerHTML = `
-    <span class="dot" style="background:${esc(r.item?.color ?? "#999")}"></span>
+    <span class="dot" style="background:${safeColor(r.item?.color)}"></span>
     <div class="grow">
       <div class="name">${esc(name)}</div>
-      <input id="rdesc" class="rdesc" placeholder="Add description…" value="${esc(r.description)}" />
+      <input id="rdesc" class="rdesc" placeholder="Add description…" maxlength="500" value="${esc(r.description)}" />
     </div>
     <span class="clock">${elapsed(r.start)}</span>
     <button id="stop" class="stop" title="Stop timer">■</button>`;
@@ -213,11 +250,7 @@ function renderList() {
     const recentKeys = new Set(state.recent.map((i) => i.project_id + i.task_id));
     results = [...state.recent, ...state.items.filter((i) => !recentKeys.has(i.project_id + i.task_id))];
   } else {
-    results = state.items
-      .map((i) => ({ i, s: score(query, `${i.client ?? ""} ${label(i)}`) }))
-      .filter((x) => x.s >= 0)
-      .sort((a, b) => b.s - a.s)
-      .map((x) => x.i);
+    results = search(query, state.items);
   }
   results = results.slice(0, 50);
   selected = Math.min(selected, Math.max(results.length - 1, 0));
@@ -228,11 +261,7 @@ function renderList() {
           (i, idx) => `
         ${idx === 0 && recentCount ? `<li class="section">Recent</li>` : ""}
         ${idx === recentCount && recentCount && !query ? `<li class="section">All projects</li>` : ""}
-        <li class="item ${idx === selected ? "sel" : ""}" data-idx="${idx}">
-          <span class="dot" style="background:${esc(i.color)}"></span>
-          <span class="grow"><b>${esc(i.project)}</b>${i.task ? ` <span class="task">· ${esc(i.task)}</span>` : ""}</span>
-          <span class="client">${esc(i.client ?? "Internal")}</span>
-        </li>`,
+        ${itemHtml(i, idx, idx === selected)}`,
         )
         .join("")
     : `<li class="empty">No matching project or task</li>`;
@@ -258,4 +287,5 @@ async function startSelected() {
 }
 
 if (win.label === "login") renderLogin();
+else if (win.label === "idle") renderIdle();
 else renderSwitcher();

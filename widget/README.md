@@ -29,16 +29,36 @@ A sign-in window opens. Paste the API token from `.admin-credentials` and click 
 | # | Do this | Expect |
 |---|---------|--------|
 | 1 | Press **⌘⇧T** | Quick switcher opens with Recent and All projects |
-| 2 | Type `pos back`, press **Enter** | Switcher closes; menu bar shows `POS Revamp 0:00` |
+| 2 | Type `pos back`, press **Enter** | Switcher closes; tray icon turns green; hovering it shows `POS Revamp — 0:00` |
 | 3 | Refresh solidtime in the browser | Running timer on Acme – POS Revamp · Backend within ~5 s |
 | 4 | ⌘⇧T, click the description under the running timer, type text, **Enter** | Description appears in solidtime |
 | 5 | ⌘⇧T, pick another project, **Tab**, type a description, **Enter** | First entry stops, second starts; both in solidtime, no overlap |
 | 6 | Click the menu bar icon | Menu shows status, Stop, your recent projects |
 | 7 | Click a recent project in the menu | Timer switches to it |
-| 8 | Menu → **Stop timer** | Menu bar text disappears; entry ends in solidtime |
+| 8 | Menu → **Stop timer** | Tray icon turns grey; entry ends in solidtime |
 | 9 | **Offline:** `docker compose stop app` (in `server/solidtime`), switch projects 2–3 times | Switching still instant; tooltip says "Offline · N waiting to sync" |
 | 10 | `docker compose start app`, wait ~1 min | All offline entries appear in solidtime, no duplicates |
 | 11 | Quit (menu → Quit), run `npm run tauri dev` again | Still signed in; running timer and recent list intact |
+| 12 | Hover the tray icon | Tooltip shows project short name and elapsed time; icon is green while running, grey when stopped |
+
+### Idle, lock and sleep (W6/W7)
+
+Start with a short threshold so you don't wait 10 minutes:
+
+```bash
+IRA_IDLE_SECS=30 npm run tauri dev
+```
+
+| # | Do this | Expect |
+|---|---------|--------|
+| 13 | Start a timer, don't touch keyboard/mouse for 40 s, then move the mouse | Within ~3 s a prompt appears top-right: "You were away for … min" |
+| 14 | Click **Keep** | Prompt closes; timer unchanged |
+| 15 | Repeat, click **Discard** | The away time is cut out: the entry ends when you left and a new one starts when you came back |
+| 16 | Repeat, click **Assign to…**, pick another project | The away time becomes an entry on that project; the original timer continues |
+| 17 | Lock the screen (Ctrl+Cmd+Q) for 40 s, unlock | Same prompt |
+| 18 | Close the lid / sleep for a minute, wake | Same prompt |
+
+Note: the prompt only appears for periods longer than the threshold, and only while a timer runs.
 
 ## 5. Useful commands
 
@@ -55,6 +75,13 @@ security delete-generic-password -s com.ira.tracker -a solidtime-token
 SOLIDTIME_TOKEN=<token> python3 ../server/seed/seed_demo.py
 ```
 
+## Automated tests
+
+```bash
+npm test                      # UI helpers (escaping, colour validation, fuzzy search)
+cd src-tauri && cargo test    # queue, idle detector, input validation
+```
+
 ## Not in this build yet
 
-Idle / screen-lock prompt (W6/W7), end-of-day review (W8), reminders (W11), separate running/stopped tray icon, signed release build.
+End-of-day review (W8), reminders (W11), signed release build and auto-update (W15).

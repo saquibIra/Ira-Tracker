@@ -1,14 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Switcher and sign-in windows",
+  "description": "Switcher, sign-in and idle prompt windows",
   "windows": [
     "switcher",
-    "login"
+    "login",
+    "idle"
   ],
   "permissions": [
     "core:default",
     "core:window:allow-close",
-    "core:window:allow-hide"
+    "core:window:allow-set-size"
   ]
 }

@@ -71,3 +71,17 @@ kbd { font-family: inherit; border: 1px solid var(--line); border-radius: 4px; p
   border-top: 1px solid var(--line);
 }
 .hints .sync { margin-left: auto; }
+
+/* idle prompt */
+.idle { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--line); }
+.idle-head { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px 10px; }
+.idle-head .muted { font-size: 12px; }
+.idle-actions { display: flex; gap: 8px; padding: 0 16px 12px; }
+.idle-actions button {
+  flex: 1; padding: 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: transparent; cursor: pointer;
+}
+.idle-actions button:first-child { background: var(--accent); border-color: var(--accent); color: #fff; }
+.assign { display: flex; flex-direction: column; flex: 1; min-height: 0; border-top: 1px solid var(--line); }
+.assign[hidden] { display: none; }
+.idle .error { padding: 0 16px; }

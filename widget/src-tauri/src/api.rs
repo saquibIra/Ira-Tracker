@@ -174,6 +174,26 @@ impl<'a> Api<'a> {
         .await
     }
 
+    /// Entries of this member that started exactly at `start` (solidtime filters
+    /// `start >= from AND start < to`).
+    pub async fn entries_starting_at(
+        &self,
+        cfg: &Config,
+        start: &str,
+        next_second: &str,
+    ) -> Result<Vec<RemoteEntry>, ApiError> {
+        self.list(
+            &cfg.org,
+            "time-entries",
+            &[
+                ("member_id", &cfg.member),
+                ("start", start),
+                ("end", next_second),
+            ],
+        )
+        .await
+    }
+
     pub async fn create_entry(&self, org: &str, body: &Value) -> Result<String, ApiError> {
         let v = self
             .send(
