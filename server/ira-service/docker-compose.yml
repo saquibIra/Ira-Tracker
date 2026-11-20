@@ -1,0 +1,26 @@
+# Runs the Ira service next to the solidtime stack (server/solidtime).
+# Start solidtime first so its network exists, then: docker compose up -d --build
+services:
+  ira-service:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Reach solidtime over its internal Docker network.
+      SOLIDTIME_URL: http://app:8000
+      IRA_DB_PATH: /data/ira-service.db
+    ports:
+      # Only this machine can reach it; put HTTPS (Caddy/Nginx) in front for real use.
+      - "127.0.0.1:8010:8010"
+    volumes:
+      - ira-data:/data
+    networks:
+      - solidtime
+
+volumes:
+  ira-data:
+
+networks:
+  solidtime:
+    name: solidtime_internal
+    external: true

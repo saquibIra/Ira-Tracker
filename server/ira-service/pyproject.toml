@@ -1,0 +1,37 @@
+[project]
+name = "ira-service"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=2.10.0",
+    "fastapi>=0.165.0",
+    "google-genai>=3.6.1",
+    "httpx2>=2.16.2",
+    "python-multipart>=0.0.34",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pip-audit>=2.10.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "UP", "I", "S", "SIM"]
+ignore = ["S101", "E501"]  # assert is fine; the formatter owns line length
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]  # fake tokens
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

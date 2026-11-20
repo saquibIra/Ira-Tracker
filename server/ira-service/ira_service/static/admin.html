@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ira Tracker Admin</title>
+  <link rel="stylesheet" href="admin.css" />
+  <script src="admin.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Ira Tracker admin</h1>
+    <span id="who" class="muted"></span>
+    <button id="signout" class="link" hidden>Sign out</button>
+  </header>
+
+  <main>
+    <section id="signin" class="card">
+      <h2>Sign in</h2>
+      <p class="muted">Paste your solidtime personal API token (solidtime → Profile → API Tokens).
+        It stays in this browser tab only and is sent only to this server.</p>
+      <form id="signin-form">
+        <label>API token <input id="token" type="password" autocomplete="off" required /></label>
+        <label id="org-row" hidden>Organization <select id="org"></select></label>
+        <button type="submit" id="signin-go">Continue</button>
+        <p id="signin-err" class="error"></p>
+      </form>
+    </section>
+
+    <section id="app" hidden>
+      <nav>
+        <button data-tab="projects" class="tab active">Project hints</button>
+        <button data-tab="usage" class="tab">AI usage</button>
+        <button data-tab="days" class="tab">Day submissions</button>
+      </nav>
+
+      <div id="tab-projects" class="card">
+        <h2>Project hints</h2>
+        <p class="muted">Help auto-tracking recognise each project. Keywords are matched on the
+          engineer's laptop against the active window title (repository names, ticket prefixes
+          like <code>BILL-</code>, customer names, domains); the description is given to the AI.</p>
+        <input id="filter" class="filter" placeholder="Filter projects…" />
+        <table>
+          <thead><tr><th>Project</th><th>Description</th><th>Keywords (comma separated)</th><th></th></tr></thead>
+          <tbody id="projects"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-usage" class="card" hidden>
+        <h2>AI usage</h2>
+        <label>Period
+          <select id="usage-days">
+            <option value="1">Today</option>
+            <option value="7">7 days</option>
+            <option value="30" selected>30 days</option>
+          </select>
+        </label>
+        <table>
+          <thead><tr><th>Model</th><th>Calls</th><th>With screenshot</th><th>Engineers</th><th>Input tokens</th><th>Output tokens</th><th>Avg latency</th><th>Est. cost (USD)</th></tr></thead>
+          <tbody id="usage"></tbody>
+        </table>
+        <p id="usage-total" class="total"></p>
+        <p id="usage-error" class="error"></p>
+      </div>
+
+      <div id="tab-days" class="card" hidden>
+        <h2>Day submissions</h2>
+        <label>Day <input id="day" type="date" /></label>
+        <table>
+          <thead><tr><th>Engineer</th><th>Submitted</th><th>Tracked</th><th>Entries</th></tr></thead>
+          <tbody id="days"></tbody>
+        </table>
+      </div>
+      <p id="err" class="error"></p>
+    </section>
+  </main>
+</body>
+</html>
