@@ -201,6 +201,8 @@ mod imp {
 #[serde(rename_all = "lowercase")]
 pub enum Permission {
     Granted,
+    // Windows needs no permission, so it never reports Denied.
+    #[cfg_attr(windows, allow(dead_code))]
     Denied,
     #[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
     Unsupported,

@@ -147,6 +147,7 @@ mod tests {
     fn files_are_private_and_readable_as_data_urls() {
         let tmp = std::env::temp_dir().join(format!("ira-shots-{}", uuid::Uuid::new_v4()));
         let d = ensure_dir(&tmp).unwrap();
+        assert!(d.is_dir());
         let id = uuid::Uuid::new_v4().to_string();
         write_private(&file(&tmp, &id, true), &[0xFF, 0xD8, 0xFF]).unwrap();
         let url = data_url(&tmp, &id, true).unwrap();
