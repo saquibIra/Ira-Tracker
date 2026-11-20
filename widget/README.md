@@ -85,3 +85,38 @@ cd src-tauri && cargo test    # queue, idle detector, input validation
 ## Not in this build yet
 
 End-of-day review (W8), reminders (W11), signed release build and auto-update (W15).
+
+### Installing a local release build (keeps Screen Recording permission)
+
+```bash
+APPLE_SIGNING_IDENTITY="Ira Tracker Local Signing" npm run tauri build -- --bundles app
+cp -R "src-tauri/target/release/bundle/macos/Ira Tracker.app" /Applications/   # quit the old one first
+open -a "Ira Tracker" --args --activity   # opens Review → Activity & screenshots
+```
+
+The signing identity is a self-signed certificate in this Mac's login keychain (create it once with Keychain Access → Certificate Assistant → Create a Certificate, type *Code Signing*). Without it every build has a new ad-hoc signature and macOS silently drops the Screen Recording permission.
+
+### AI auto-tracking and day review
+
+1. Start the Ira service (needs `ANTHROPIC_API_KEY` in `server/ira-service/.env`):
+   ```bash
+   cd ~/Desktop/ira_tracker/server/ira-service
+   uv run --env-file .env uvicorn --factory ira_service.main:create_app --port 8010
+   ```
+2. Start the widget with fast timings (a window check every 5 s, an AI call at most every 30 s):
+   ```bash
+   IRA_AUTO_TICK_SECS=5 IRA_CAPTURE_SECS=30 npm run tauri dev
+   ```
+3. In the auto-tracking window, enter `http://localhost:8010` and turn it on.
+4. Allow Screen Recording when macOS asks: System Settings → Privacy & Security → Screen Recording. Then quit and restart the widget. In dev, the permission may be listed under the terminal or VS Code that runs `npm run tauri dev`.
+
+Full checklist: [docs/MANUAL_TEST_PLAN.md](../docs/MANUAL_TEST_PLAN.md), sections B6 (auto-tracking) and B7 (end-of-day review).
+
+Quick checks without the GUI:
+
+```bash
+cd src-tauri
+cargo test live_ -- --ignored --nocapture    # reads the front window and takes a test screenshot (kept in memory)
+IRA_E2E_URL=http://localhost:8010 IRA_E2E_TOKEN=<token> IRA_E2E_ORG=<org id> \
+  cargo test e2e_ -- --ignored --nocapture   # widget's client against the running Ira service
+```

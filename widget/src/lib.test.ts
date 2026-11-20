@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { elapsed, esc, itemHtml, label, safeColor, score, search, type Item } from "./lib";
+import {
+  atLocalTime,
+  capturesIn,
+  dayRows,
+  decidedBy,
+  defaultIraUrl,
+  defaultServer,
+  duration,
+  elapsed,
+  esc,
+  itemHtml,
+  label,
+  localHhmm,
+  mismatch,
+  plural,
+  safeColor,
+  score,
+  search,
+  type CaptureView,
+  type EntryView,
+  type Item,
+} from "./lib";
 
 const item = (project: string, task: string | null = null, client: string | null = null): Item => ({
   project_id: project,
@@ -76,5 +97,126 @@ describe("score / search", () => {
 
   it("returns nothing for no match", () => {
     expect(search("zzz", items)).toEqual([]);
+  });
+});
+
+const entry = (start: string, end: string | null, extra: Partial<EntryView> = {}): EntryView => ({
+  local_id: start,
+  start,
+  end,
+  item: null,
+  description: "",
+  auto: true,
+  needs_review: false,
+  running: end === null,
+  error: null,
+  ...extra,
+});
+
+describe("duration", () => {
+  it("formats hours and minutes", () => {
+    expect(duration(0)).toBe("0m");
+    expect(duration(59 * 60)).toBe("59m");
+    expect(duration(7 * 3600 + 42 * 60)).toBe("7h 42m");
+    expect(duration(3600 + 5 * 60)).toBe("1h 05m");
+  });
+});
+
+describe("dayRows", () => {
+  it("inserts gaps of five minutes or more", () => {
+    const rows = dayRows([
+      entry("2026-11-19T09:00:00Z", "2026-11-19T10:00:00Z"),
+      entry("2026-11-19T10:03:00Z", "2026-11-19T11:00:00Z"),
+      entry("2026-11-19T11:30:00Z", "2026-11-19T12:00:00Z"),
+    ]);
+    expect(rows.map((r) => r.kind)).toEqual(["entry", "entry", "gap", "entry"]);
+    const gap = rows[2];
+    expect(gap.kind === "gap" && gap.secs).toBe(1800);
+  });
+
+  it("counts a running entry up to now", () => {
+    const now = Date.parse("2026-11-19T09:30:00Z");
+    const rows = dayRows([entry("2026-11-19T09:00:00Z", null)], now);
+    expect(rows[0].secs).toBe(1800);
+  });
+
+  it("does not report a gap inside an earlier long entry", () => {
+    const rows = dayRows([
+      entry("2026-11-19T09:00:00Z", "2026-11-19T12:00:00Z"),
+      entry("2026-11-19T10:00:00Z", "2026-11-19T10:30:00Z"),
+      entry("2026-11-19T11:00:00Z", "2026-11-19T11:30:00Z"),
+    ]);
+    expect(rows.filter((r) => r.kind === "gap")).toHaveLength(0);
+  });
+});
+
+const shot = (taken_at: string, project: string | null, extra: Partial<CaptureView> = {}): CaptureView => ({
+  id: taken_at,
+  taken_at,
+  app: "Code",
+  title: "index.ts — mmcg-platform",
+  kind: project ? "project" : "neutral",
+  item: project ? item(project) : null,
+  note: "",
+  confidence: null,
+  source: "keywords",
+  thumb: null,
+  ...extra,
+});
+
+describe("capturesIn", () => {
+  it("keeps screenshots taken while the entry ran", () => {
+    const e = entry("2026-11-19T09:00:00Z", "2026-11-19T10:00:00Z");
+    const caps = [
+      shot("2026-11-19T08:59:00Z", "A"),
+      shot("2026-11-19T09:00:00Z", "A"),
+      shot("2026-11-19T09:59:59Z", "A"),
+      shot("2026-11-19T10:00:00Z", "A"),
+    ];
+    expect(capturesIn(e, caps).map((c) => c.taken_at)).toEqual(["2026-11-19T09:00:00Z", "2026-11-19T09:59:59Z"]);
+  });
+  it("uses now for the running entry", () => {
+    const e = entry("2026-11-19T09:00:00Z", null);
+    const now = Date.parse("2026-11-19T09:30:00Z");
+    expect(capturesIn(e, [shot("2026-11-19T09:20:00Z", "A"), shot("2026-11-19T09:40:00Z", "A")], now)).toHaveLength(1);
+  });
+});
+
+describe("local times", () => {
+  it("round-trips HH:MM on the entry's day as UTC without milliseconds", () => {
+    const base = "2026-11-19T09:00:00Z";
+    const iso = atLocalTime(base, localHhmm(base));
+    expect(iso).toBe(base);
+    expect(atLocalTime(base, "25:00")).toBeNull();
+    expect(atLocalTime(base, "9:5")).toBeNull();
+    expect(atLocalTime(base, "10:30")).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/);
+  });
+});
+
+describe("screenshot labels", () => {
+  it("flags screenshots that show another project", () => {
+    const e = { ...entry("2026-11-19T09:00:00Z", null), item: item("A") };
+    expect(mismatch(shot("2026-11-19T09:10:00Z", "B"), e)).toBe(true);
+    expect(mismatch(shot("2026-11-19T09:10:00Z", "A"), e)).toBe(false);
+    expect(mismatch(shot("2026-11-19T09:10:00Z", null), e)).toBe(false);
+  });
+  it("explains how the project was decided", () => {
+    expect(decidedBy(shot("t", "A", { source: "ai", confidence: 0.923 }))).toBe("AI · 92% sure");
+    expect(decidedBy(shot("t", "A"))).toBe("project keywords");
+    expect(plural(1, "minute")).toBe("1 minute");
+    expect(plural(5, "minute")).toBe("5 minutes");
+  });
+});
+
+describe("production defaults", () => {
+  it("uses the server baked in at build time, else local development", () => {
+    expect(defaultServer("https://time.example.com/")).toBe("https://time.example.com");
+    expect(defaultServer(undefined)).toBe("http://localhost:8000");
+    expect(defaultServer("  ")).toBe("http://localhost:8000");
+  });
+  it("finds the Ira service under /ira in production", () => {
+    expect(defaultIraUrl("https://time.example.com")).toBe("https://time.example.com/ira");
+    expect(defaultIraUrl("http://localhost:8000")).toBe("http://localhost:8010");
+    expect(defaultIraUrl(null)).toBe("http://localhost:8010");
   });
 });

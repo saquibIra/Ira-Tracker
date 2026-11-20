@@ -1,7 +1,14 @@
+mod ai;
 mod api;
+mod applog;
+mod auto;
+mod capture;
+mod context;
 mod db;
 mod idle;
 mod input;
+mod review;
+mod shots;
 
 use api::{Api, ApiError, Catalog, Config};
 use rusqlite::Connection;
@@ -10,7 +17,7 @@ use serde_json::json;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use std::time::Duration;
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -21,6 +28,7 @@ const KEYRING_USER: &str = "solidtime-token";
 const TRAY_ID: &str = "main";
 const SWITCHER: &str = "switcher";
 const LOGIN: &str = "login";
+const AUTO: &str = "auto";
 /// Days of server history pulled into the local store (recent list, later the day review).
 const PULL_DAYS: i64 = 7;
 /// Background sync interval; user actions trigger an earlier sync.
@@ -38,6 +46,12 @@ struct AppState {
     offline: AtomicBool,
     last_error: Mutex<Option<String>>,
     away: Mutex<Option<idle::Away>>,
+    auto: Mutex<auto::AutoState>,
+    policy: Mutex<ai::Policy>,
+    hints: Mutex<Vec<ai::Hint>>,
+    auto_kick: Notify,
+    /// App data folder (database, kept screenshots).
+    data_dir: std::path::PathBuf,
 }
 
 /// solidtime requires UTC without fractional seconds.
@@ -100,6 +114,7 @@ struct Running {
     item: Option<Item>,
     description: String,
     start: String,
+    auto: bool,
 }
 
 #[derive(Serialize)]
@@ -112,6 +127,7 @@ struct UiState {
     pending: i64,
     offline: bool,
     error: Option<String>,
+    auto: String,
 }
 
 fn running(st: &AppState) -> Option<Running> {
@@ -124,6 +140,7 @@ fn running(st: &AppState) -> Option<Running> {
             .and_then(|p| cat.item(p, e.task_id.as_deref())),
         description: e.description,
         start: e.start,
+        auto: e.source == "auto",
     })
 }
 
@@ -151,6 +168,7 @@ fn ui_state(st: &AppState, with_items: bool) -> UiState {
         pending: db::pending_count(&st.db.lock().unwrap()),
         offline: st.offline.load(SeqCst),
         error: st.last_error.lock().unwrap().clone(),
+        auto: auto::status(st),
     }
 }
 
@@ -202,9 +220,16 @@ fn update_tooltip(app: &AppHandle) {
                 .as_ref()
                 .map(|i| short_name(&i.project))
                 .unwrap_or_else(|| "No project".into());
-            format!("{short} — {}{sync_note}", elapsed(&r.start))
+            let how = if r.auto { " (auto)" } else { "" };
+            format!("{short} — {}{how}{sync_note}", elapsed(&r.start))
         }
         None => format!("Ira Tracker — stopped{sync_note}"),
+    };
+    let auto_on = st.auto.lock().unwrap().enabled; // guard dropped before status() locks again
+    let text = if auto_on {
+        format!("{text}\nAuto-tracking: {}", auto::status(&st))
+    } else {
+        text
     };
     let _ = tray.set_tooltip(Some(text));
 }
@@ -228,12 +253,13 @@ fn refresh_tray(app: &AppHandle) -> tauri::Result<()> {
 
     let status = match &s.running {
         Some(r) => format!(
-            "● {} ({})",
+            "● {} ({}){}",
             r.item
                 .as_ref()
                 .map(label)
-                .unwrap_or_else(|| "No project".into()),
-            elapsed(&r.start)
+                .unwrap_or_else(|| "Needs review".into()),
+            elapsed(&r.start),
+            if r.auto { " · auto" } else { "" }
         ),
         None => "Not tracking".into(),
     };
@@ -261,6 +287,39 @@ fn refresh_tray(app: &AppHandle) -> tauri::Result<()> {
                 .accelerator("CmdOrCtrl+Shift+T")
                 .build(app)?,
         );
+        menu = menu
+            .text("review", "Review today…")
+            .text("activity", "Activity & screenshots…");
+        let (enabled, paused) = {
+            let a = st.auto.lock().unwrap();
+            (
+                a.enabled,
+                a.paused_until.is_some_and(|t| t > chrono::Utc::now()),
+            )
+        };
+        let mut sub = SubmenuBuilder::new(app, "Auto-tracking");
+        sub = sub.item(
+            &MenuItemBuilder::with_id("auto-status", auto::status(&st))
+                .enabled(false)
+                .build(app)?,
+        );
+        if enabled && paused {
+            sub = sub.text("auto-resume", "Resume auto-tracking");
+        } else if enabled {
+            sub = sub
+                .text("pause:30", "Pause 30 minutes (private)")
+                .text("pause:60", "Pause 1 hour (private)")
+                .text("pause:day", "Pause until tomorrow");
+        }
+        sub = sub.separator().text(
+            "auto-settings",
+            if enabled {
+                "Settings…"
+            } else {
+                "Set up auto-tracking…"
+            },
+        );
+        menu = menu.item(&sub.build()?);
     }
     if let Some(a) = st.away.lock().unwrap().as_ref() {
         menu = menu.text(
@@ -275,7 +334,7 @@ fn refresh_tray(app: &AppHandle) -> tauri::Result<()> {
                 .build(app)?,
         );
     }
-    menu = menu.separator();
+    menu = menu.separator().text("logs", "Open logs folder");
     menu = if s.signed_in {
         menu.text("signout", "Sign out")
     } else {
@@ -295,11 +354,25 @@ fn handle_menu(app: &AppHandle, id: &str) {
         "switch" => open_window(app, SWITCHER),
         "signin" => open_window(app, LOGIN),
         "away" => idle::show_prompt(app),
+        "review" => open_review_tab(app, "log"),
+        "activity" => open_review_tab(app, "activity"),
+        "auto-settings" => open_window(app, AUTO),
+        "auto-resume" => auto::resume(app),
+        "pause:30" => auto::pause(app, Some(30)),
+        "pause:60" => auto::pause(app, Some(60)),
+        "pause:day" => auto::pause(app, None),
         "signout" => {
             if let Err(e) = sign_out(app.clone()) {
                 *app.state::<AppState>().last_error.lock().unwrap() = Some(e);
                 let _ = refresh_tray(app);
             }
+        }
+        "logs" => {
+            let d = applog::dir(&app.state::<AppState>().data_dir);
+            #[cfg(target_os = "macos")]
+            let _ = std::process::Command::new("open").arg(&d).spawn();
+            #[cfg(windows)]
+            let _ = std::process::Command::new("explorer").arg(&d).spawn();
         }
         "quit" => app.exit(0),
         id => {
@@ -317,7 +390,20 @@ fn handle_menu(app: &AppHandle, id: &str) {
 }
 
 /// Windows are created on demand and destroyed on close to keep idle memory low.
+/// Opens the day review on a tab: "log" (time blocks) or "activity" (screenshots and
+/// classifications, one row per check).
+fn open_review_tab(app: &AppHandle, tab: &str) {
+    if app.get_webview_window(review::REVIEW).is_some() {
+        let _ = app.emit("review-tab", tab);
+    }
+    open_window_at(app, review::REVIEW, tab);
+}
+
 fn open_window(app: &AppHandle, label: &str) {
+    open_window_at(app, label, "");
+}
+
+fn open_window_at(app: &AppHandle, label: &str, hash: &str) {
     if label == SWITCHER {
         let st = app.state::<AppState>();
         let age = chrono::Utc::now().timestamp() - st.catalog.lock().unwrap().fetched_at;
@@ -326,7 +412,7 @@ fn open_window(app: &AppHandle, label: &str) {
             st.kick.notify_one();
         }
         if st.cfg.lock().unwrap().is_none() {
-            return open_window(app, LOGIN);
+            return open_window_at(app, LOGIN, "");
         }
     }
     if let Some(w) = app.get_webview_window(label) {
@@ -334,17 +420,28 @@ fn open_window(app: &AppHandle, label: &str) {
         let _ = w.set_focus();
         return;
     }
-    let (title, w, h, decorated) = if label == LOGIN {
-        ("Ira Tracker – Sign in", 440.0, 420.0, true)
-    } else {
-        ("Ira Tracker", 560.0, 460.0, false)
+    let (title, w, h, decorated, on_top) = match label {
+        LOGIN => ("Ira Tracker – Sign in", 440.0, 420.0, true, true),
+        AUTO => ("Ira Tracker – Auto-tracking", 520.0, 600.0, true, true),
+        review::REVIEW => ("Ira Tracker – Review your day", 880.0, 760.0, true, false),
+        _ => ("Ira Tracker", 560.0, 460.0, false, true),
     };
-    match WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
+    if label == review::REVIEW
+        && let Some(n) = app.get_webview_window(review::NUDGE)
+    {
+        let _ = n.close();
+    }
+    let url = if hash.is_empty() {
+        "index.html".to_string()
+    } else {
+        format!("index.html#{hash}")
+    };
+    match WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
         .title(title)
         .inner_size(w, h)
-        .resizable(false)
+        .resizable(label == review::REVIEW)
         .decorations(decorated)
-        .always_on_top(true)
+        .always_on_top(on_top)
         .skip_taskbar(true)
         .center()
         .focused(true)
@@ -353,7 +450,7 @@ fn open_window(app: &AppHandle, label: &str) {
         Ok(w) => {
             let _ = w.set_focus();
         }
-        Err(e) => eprintln!("window {label}: {e}"),
+        Err(e) => log::error!("window {label}: {e}"),
     }
 }
 
@@ -393,22 +490,23 @@ fn start_timer(
             .find(|p| p.id == project_id)
             .is_some_and(|p| p.is_billable)
     };
+    let description = input::description(&description);
     db::start(
         &mut st.db.lock().unwrap(),
-        &project_id,
-        task_id.as_deref(),
-        &input::description(&description),
-        billable,
+        &db::NewEntry::manual(&project_id, task_id.as_deref(), &description, billable),
         &now(),
     )
     .map_err(|e| e.to_string())?;
+    auto::manual_action(&st);
     changed(&app);
     Ok(())
 }
 
 #[tauri::command]
 fn stop_timer(app: AppHandle) -> Result<(), String> {
-    db::stop(&mut app.state::<AppState>().db.lock().unwrap(), &now()).map_err(|e| e.to_string())?;
+    let st = app.state::<AppState>();
+    db::stop(&mut st.db.lock().unwrap(), &now()).map_err(|e| e.to_string())?;
+    auto::manual_action(&st);
     changed(&app);
     Ok(())
 }
@@ -422,6 +520,18 @@ fn set_description(app: AppHandle, description: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     changed(&app);
     Ok(())
+}
+
+/// Restarts the app (macOS applies a new Screen Recording permission only after that).
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
+/// Opens the end-of-day review (from the reminder or the switcher).
+#[tauri::command]
+fn open_review(app: AppHandle) {
+    open_review_tab(&app, "log");
 }
 
 /// Organizations available to this token; the sign-in window shows a picker when
@@ -487,6 +597,9 @@ async fn sign_in(
     if let Some(w) = app.get_webview_window(LOGIN) {
         let _ = w.close();
     }
+    if !st.auto.lock().unwrap().enabled {
+        open_window(&app, AUTO);
+    }
     Ok(())
 }
 
@@ -501,12 +614,34 @@ fn sign_out(app: AppHandle) -> Result<(), String> {
                 "{pending} entries not synced yet; connect to the server first"
             ));
         }
-        db.execute_batch("DELETE FROM entry;")
-            .map_err(|e| e.to_string())?;
-        for k in ["base_url", "org_id", "member_id", "catalog"] {
+        // Consent and everything learned about this person's windows go with them.
+        db::forget_all(&db).map_err(|e| e.to_string())?;
+        for k in [
+            "base_url",
+            "org_id",
+            "member_id",
+            "catalog",
+            "auto_enabled",
+            "consent_version",
+            "paused_until",
+            "ai_hints",
+            "ai_hints_etag",
+            "nudged",
+        ] {
             let _ = db::kv_del(&db, k);
         }
+        let _ = db.execute("DELETE FROM kv WHERE k LIKE 'submitted:%'", []);
     }
+    {
+        let mut a = st.auto.lock().unwrap();
+        let service = a.service.take();
+        *a = auto::AutoState {
+            service,
+            ..Default::default()
+        };
+    }
+    *st.hints.lock().unwrap() = Vec::new();
+    shots::delete_all(&st);
     if let Ok(k) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
         let _ = k.delete_credential();
     }
@@ -539,7 +674,33 @@ async fn pull(app: &AppHandle, api: &Api<'_>, cfg: &Config) -> Result<(), ApiErr
 async fn push(app: &AppHandle, api: &Api<'_>, cfg: &Config) -> Result<(), ApiError> {
     let st = app.state::<AppState>();
     let dirty = db::dirty(&st.db.lock().unwrap()).unwrap_or_default();
+    // A boundary moved in the review changes two entries; until both are sent the server
+    // may see a temporary overlap and refuse the first one. Refused rows get one more try
+    // after the rest of the batch before they are marked as rejected.
+    let mut retry = Vec::new();
     for e in dirty {
+        match push_one(app, api, cfg, e.clone(), false).await? {
+            true => {}
+            false => retry.push(e),
+        }
+    }
+    // Same snapshot is safe: marking synced/rejected only applies if `rev` is unchanged.
+    for e in retry {
+        push_one(app, api, cfg, e, true).await?;
+    }
+    Ok(())
+}
+
+/// Sends one entry. Returns false if the server refused it and `final_try` is false.
+async fn push_one(
+    app: &AppHandle,
+    api: &Api<'_>,
+    cfg: &Config,
+    e: db::Entry,
+    final_try: bool,
+) -> Result<bool, ApiError> {
+    let st = app.state::<AppState>();
+    {
         // A create may have reached the server before a crash; adopt it instead of
         // creating a duplicate.
         let mut e = e;
@@ -577,6 +738,7 @@ async fn push(app: &AppHandle, api: &Api<'_>, cfg: &Config) -> Result<(), ApiErr
         let _ = match res {
             Ok(None) => db::remove(&db, &e.local_id, e.rev),
             Ok(Some(remote)) => db::mark_synced(&db, &e.local_id, &remote, e.rev),
+            Err(ApiError::Rejected(_)) if !final_try => return Ok(false),
             Err(ApiError::Rejected(msg)) => {
                 *st.last_error.lock().unwrap() = Some(msg.clone());
                 db::mark_rejected(&db, &e.local_id, e.rev, &msg)
@@ -584,7 +746,7 @@ async fn push(app: &AppHandle, api: &Api<'_>, cfg: &Config) -> Result<(), ApiErr
             Err(other) => return Err(other),
         };
     }
-    Ok(())
+    Ok(true)
 }
 
 async fn find_created(
@@ -621,10 +783,11 @@ async fn sync_once(app: &AppHandle) {
             st.offline.store(false, SeqCst);
         }
         Err(ApiError::Offline(m)) => {
-            eprintln!("sync: {m}");
+            log::warn!("sync offline: {m}");
             st.offline.store(true, SeqCst);
         }
         Err(e) => {
+            log::error!("sync failed: {e}");
             st.offline.store(false, SeqCst);
             *st.last_error.lock().unwrap() = Some(e.to_string());
         }
@@ -658,6 +821,7 @@ async fn ticker(app: AppHandle) {
     loop {
         tokio::time::sleep(Duration::from_secs(30)).await;
         update_tooltip(&app);
+        review::maybe_nudge(&app);
     }
 }
 
@@ -685,8 +849,15 @@ pub fn run() {
     let hotkey = Shortcut::new(Some(mods | Modifiers::SHIFT), Code::KeyT);
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            open_window(app, SWITCHER)
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            // `open -a "Ira Tracker" --args --review` (or `--activity`) opens the day review.
+            if args.iter().any(|a| a == "--activity") {
+                open_review_tab(app, "activity")
+            } else if args.iter().any(|a| a == "--review") {
+                open_review_tab(app, "log")
+            } else {
+                open_window(app, SWITCHER)
+            }
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -710,7 +881,23 @@ pub fn run() {
             sign_in,
             sign_out,
             idle::get_away,
-            idle::resolve_away
+            idle::resolve_away,
+            auto::get_auto,
+            auto::set_auto,
+            auto::request_screen_permission,
+            auto::open_screen_settings,
+            auto::pause_auto,
+            auto::resume_auto,
+            review::get_day,
+            review::update_entry,
+            review::delete_entry,
+            review::submit_day,
+            review::set_entry_times,
+            review::split_entry,
+            review::get_capture,
+            review::delete_capture,
+            open_review,
+            restart_app
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -718,12 +905,27 @@ pub fn run() {
 
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
+            applog::init(&dir);
+            log::info!(
+                "Ira Tracker {} starting ({} {})",
+                app.package_info().version,
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
             let conn = db::open(&dir.join("tracker.db"))?;
             let catalog = db::kv_get(&conn, "catalog")
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default();
             let cfg = load_config(&conn);
             let signed_in = cfg.is_some();
+            let auto_state = auto::AutoState::load(&conn);
+            let auto_on = auto_state.enabled;
+            let policy: ai::Policy = db::kv_get(&conn, "ai_policy")
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+            let hints: Vec<ai::Hint> = db::kv_get(&conn, "ai_hints")
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
             app.manage(AppState {
                 db: Mutex::new(conn),
                 http: reqwest::Client::builder()
@@ -736,7 +938,17 @@ pub fn run() {
                 offline: AtomicBool::new(false),
                 last_error: Mutex::new(None),
                 away: Mutex::new(None),
+                auto: Mutex::new(auto_state),
+                policy: Mutex::new(policy),
+                hints: Mutex::new(hints),
+                auto_kick: Notify::new(),
+                data_dir: dir.clone(),
             });
+            {
+                let st = app.state::<AppState>();
+                let keep = st.policy.lock().unwrap().keep_screenshots_days;
+                shots::prune(&st, keep);
+            }
 
             TrayIconBuilder::with_id(TRAY_ID)
                 .icon(tray_icon(false))
@@ -746,7 +958,7 @@ pub fn run() {
             refresh_tray(app.handle())?;
 
             if let Err(e) = app.global_shortcut().register(hotkey) {
-                eprintln!("hotkey not registered: {e}");
+                log::warn!("hotkey not registered: {e}");
             }
             #[cfg(not(debug_assertions))]
             {
@@ -754,14 +966,27 @@ pub fn run() {
                 let _ = app.autolaunch().enable();
             }
 
-            if signed_in {
-                app.state::<AppState>().kick.notify_one();
-            } else {
+            if !signed_in {
                 open_window(app.handle(), LOGIN);
+            } else {
+                app.state::<AppState>().kick.notify_one();
+                if !auto_on {
+                    open_window(app.handle(), AUTO);
+                } else if context::screen_permission() == context::Permission::Denied {
+                    // Registers the app with macOS and shows the system prompt (once);
+                    // after allowing, the app must restart to see the permission.
+                    context::request_screen_permission();
+                }
             }
             tauri::async_runtime::spawn(sync_loop(app.handle().clone()));
             tauri::async_runtime::spawn(ticker(app.handle().clone()));
             tauri::async_runtime::spawn(idle::monitor(app.handle().clone()));
+            tauri::async_runtime::spawn(auto::monitor(app.handle().clone()));
+            if signed_in && std::env::args().any(|a| a == "--activity") {
+                open_review_tab(app.handle(), "activity");
+            } else if signed_in && std::env::args().any(|a| a == "--review") {
+                open_review_tab(app.handle(), "log");
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

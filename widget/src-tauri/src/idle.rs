@@ -46,7 +46,7 @@ fn threshold_secs(st: &AppState) -> i64 {
 }
 
 #[cfg(target_os = "macos")]
-fn system_idle_secs() -> Option<i64> {
+pub(crate) fn system_idle_secs() -> Option<i64> {
     #[link(name = "CoreGraphics", kind = "framework")]
     unsafe extern "C" {
         fn CGEventSourceSecondsSinceLastEventType(state: i32, event_type: u32) -> f64;
@@ -57,7 +57,7 @@ fn system_idle_secs() -> Option<i64> {
 }
 
 #[cfg(windows)]
-fn system_idle_secs() -> Option<i64> {
+pub(crate) fn system_idle_secs() -> Option<i64> {
     use windows_sys::Win32::System::SystemInformation::GetTickCount;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
     let mut info = LASTINPUTINFO {
@@ -72,7 +72,7 @@ fn system_idle_secs() -> Option<i64> {
 
 /// Other platforms: only sleep is detected (via the wall-clock jump).
 #[cfg(not(any(target_os = "macos", windows)))]
-fn system_idle_secs() -> Option<i64> {
+pub(crate) fn system_idle_secs() -> Option<i64> {
     None
 }
 
@@ -207,7 +207,7 @@ pub fn show_prompt(app: &AppHandle) {
         builder = builder.position(pos.x + size.width - w - 16.0, pos.y + 40.0);
     }
     if let Err(e) = builder.build() {
-        eprintln!("idle prompt: {e}");
+        log::error!("idle prompt: {e}");
     }
 }
 

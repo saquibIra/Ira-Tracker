@@ -1,11 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Switcher, sign-in and idle prompt windows",
+  "description": "Switcher, sign-in, idle prompt, auto-tracking settings, day review and reminder windows",
   "windows": [
     "switcher",
     "login",
-    "idle"
+    "idle",
+    "auto",
+    "review",
+    "nudge"
   ],
   "permissions": [
     "core:default",

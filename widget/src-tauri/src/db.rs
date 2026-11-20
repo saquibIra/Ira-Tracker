@@ -39,6 +39,37 @@ const MIGRATIONS: &[&str] = &[
     // 2: remember that a create was sent, so a crash before storing the server id
     //    cannot produce a duplicate on retry
     "ALTER TABLE entry ADD COLUMN create_attempted INTEGER NOT NULL DEFAULT 0;",
+    // 3: auto-tracking. `source` is 'manual' or 'auto'; `context` is the window
+    //    fingerprint that produced an auto entry (local only, never synced), so a
+    //    correction in the day review can teach the cache. `context_cache` maps window
+    //    fingerprints to a project (learned from the AI or from the user).
+    "ALTER TABLE entry ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';
+     ALTER TABLE entry ADD COLUMN context TEXT;
+     CREATE TABLE IF NOT EXISTS context_cache(
+            fp          TEXT PRIMARY KEY,
+            kind        TEXT NOT NULL,
+            project_id  TEXT,
+            task_id     TEXT,
+            note        TEXT NOT NULL DEFAULT '',
+            source      TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+     );",
+    // 4: screenshots kept on this computer for the day review (metadata only; the
+    //    images are files in the captures folder). `kind`: project / review / neutral
+    //    / pending; `source`: how the project was decided (ai, keywords, cache).
+    "CREATE TABLE IF NOT EXISTS capture(
+            id          TEXT PRIMARY KEY,
+            taken_at    TEXT NOT NULL,
+            app         TEXT NOT NULL,
+            title       TEXT NOT NULL,
+            kind        TEXT NOT NULL,
+            project_id  TEXT,
+            task_id     TEXT,
+            note        TEXT NOT NULL DEFAULT '',
+            confidence  REAL,
+            source      TEXT NOT NULL
+     );
+     CREATE INDEX IF NOT EXISTS capture_taken ON capture(taken_at);",
 ];
 
 fn migrate(c: &Connection) -> rusqlite::Result<()> {
@@ -65,10 +96,14 @@ pub struct Entry {
     pub deleted: bool,
     pub rev: i64,
     pub create_attempted: bool,
+    pub source: String,
+    pub context: Option<String>,
+    pub error: Option<String>,
 }
 
 const COLS: &str = "local_id, remote_id, project_id, task_id, description, start, end, billable, \
-                    deleted, rev, create_attempted";
+                    deleted, rev, create_attempted, source, context, \
+                    CASE WHEN error_rev = rev THEN error END";
 
 fn row(r: &Row) -> rusqlite::Result<Entry> {
     Ok(Entry {
@@ -83,6 +118,9 @@ fn row(r: &Row) -> rusqlite::Result<Entry> {
         deleted: r.get(8)?,
         rev: r.get(9)?,
         create_attempted: r.get(10)?,
+        source: r.get(11)?,
+        context: r.get(12)?,
+        error: r.get(13)?,
     })
 }
 
@@ -139,26 +177,53 @@ fn close_running(c: &Connection, now: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn start(
-    c: &mut Connection,
-    project_id: &str,
-    task_id: Option<&str>,
-    description: &str,
-    billable: bool,
-    now: &str,
-) -> rusqlite::Result<()> {
-    let tx = c.transaction()?;
-    close_running(&tx, now)?;
-    tx.execute(
-        "INSERT INTO entry(local_id, project_id, task_id, description, start, billable)
-         VALUES(?, ?, ?, ?, ?, ?)",
-        params![
-            uuid::Uuid::new_v4().to_string(),
-            project_id,
+/// A timer to start. `project_id: None` is a "Needs review" block (auto-tracking could
+/// not tell the project).
+#[derive(Clone, Debug, Default)]
+pub struct NewEntry<'a> {
+    pub project_id: Option<&'a str>,
+    pub task_id: Option<&'a str>,
+    pub description: &'a str,
+    pub billable: bool,
+    pub auto: bool,
+    pub context: Option<&'a str>,
+}
+
+impl<'a> NewEntry<'a> {
+    pub fn manual(
+        project_id: &'a str,
+        task_id: Option<&'a str>,
+        description: &'a str,
+        billable: bool,
+    ) -> Self {
+        NewEntry {
+            project_id: Some(project_id),
             task_id,
             description,
-            now,
-            billable
+            billable,
+            ..Default::default()
+        }
+    }
+}
+
+/// Starts a timer at `at`, closing the running one at the same moment (no overlap).
+/// Auto-tracking passes a backdated `at`; it is never earlier than the running entry's
+/// start, so finished entries are never touched.
+pub fn start(c: &mut Connection, e: &NewEntry, at: &str) -> rusqlite::Result<()> {
+    let tx = c.transaction()?;
+    close_running(&tx, at)?;
+    tx.execute(
+        "INSERT INTO entry(local_id, project_id, task_id, description, start, billable, source, context)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            uuid::Uuid::new_v4().to_string(),
+            e.project_id,
+            e.task_id,
+            e.description,
+            at,
+            e.billable,
+            if e.auto { "auto" } else { "manual" },
+            e.context,
         ],
     )?;
     tx.commit()
@@ -204,15 +269,17 @@ pub fn cut_running(
         )?;
     }
     tx.execute(
-        "INSERT INTO entry(local_id, project_id, task_id, description, start, billable)
-         VALUES(?, ?, ?, ?, ?, ?)",
+        "INSERT INTO entry(local_id, project_id, task_id, description, start, billable, source, context)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             uuid::Uuid::new_v4().to_string(),
             r.project_id,
             r.task_id,
             r.description,
             to,
-            r.billable
+            r.billable,
+            r.source,
+            r.context
         ],
     )?;
     tx.commit()?;
@@ -359,9 +426,378 @@ pub fn merge_remote(c: &mut Connection, entries: &[RemoteEntry]) -> rusqlite::Re
     tx.commit()
 }
 
+// ---------- day review (W8) ----------
+
+/// Entries overlapping `[from, to)`, oldest first (includes the running one).
+pub fn day_entries(c: &Connection, from: &str, to: &str) -> rusqlite::Result<Vec<Entry>> {
+    let mut s = c.prepare(&format!(
+        "SELECT {COLS} FROM entry
+         WHERE deleted=0 AND start < ? AND (end IS NULL OR end > ?)
+         ORDER BY start"
+    ))?;
+    let rows = s.query_map([to, from], row)?;
+    rows.collect()
+}
+
+pub fn entry(c: &Connection, local_id: &str) -> rusqlite::Result<Option<Entry>> {
+    c.query_row(
+        &format!("SELECT {COLS} FROM entry WHERE local_id=? AND deleted=0"),
+        [local_id],
+        row,
+    )
+    .optional()
+}
+
+/// Reassigns an entry (fixing a "Needs review" block or a wrong guess).
+pub fn set_entry_project(
+    c: &Connection,
+    local_id: &str,
+    project_id: &str,
+    task_id: Option<&str>,
+    billable: bool,
+) -> rusqlite::Result<bool> {
+    let n = c.execute(
+        "UPDATE entry SET project_id=?, task_id=?, billable=?, dirty=1, rev=rev+1
+         WHERE local_id=? AND deleted=0",
+        params![project_id, task_id, billable, local_id],
+    )?;
+    Ok(n == 1)
+}
+
+pub fn set_entry_description(
+    c: &Connection,
+    local_id: &str,
+    description: &str,
+) -> rusqlite::Result<bool> {
+    let n = c.execute(
+        "UPDATE entry SET description=?, dirty=1, rev=rev+1 WHERE local_id=? AND deleted=0",
+        params![description, local_id],
+    )?;
+    Ok(n == 1)
+}
+
+/// Removes an entry. One the server may already have stays queued as a deletion.
+pub fn delete_entry(c: &Connection, local_id: &str) -> rusqlite::Result<bool> {
+    let n = c.execute(
+        "DELETE FROM entry WHERE local_id=? AND remote_id IS NULL AND create_attempted=0",
+        [local_id],
+    )?;
+    if n == 1 {
+        return Ok(true);
+    }
+    let n = c.execute(
+        "UPDATE entry SET deleted=1, dirty=1, rev=rev+1,
+                end = COALESCE(end, start)
+         WHERE local_id=? AND deleted=0",
+        [local_id],
+    )?;
+    Ok(n == 1)
+}
+
+// ---------- learned window → project cache (auto-tracking) ----------
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Learned {
+    /// "project" or "neutral" (chat, lock screen: keep the current project).
+    pub kind: String,
+    pub project_id: Option<String>,
+    pub task_id: Option<String>,
+    pub note: String,
+    /// "ai" or "user".
+    pub source: String,
+}
+
+/// A cached answer for this window, if younger than its source's lifetime: AI answers
+/// for `ai_max_age` (the same title can mean different work on another day), the
+/// user's own corrections for `user_max_age`.
+pub fn learned(
+    c: &Connection,
+    fp: &str,
+    ai_since: &str,
+    user_since: &str,
+) -> rusqlite::Result<Option<Learned>> {
+    c.query_row(
+        "SELECT kind, project_id, task_id, note, source FROM context_cache
+         WHERE fp=? AND updated_at >= CASE source WHEN 'user' THEN ? ELSE ? END",
+        params![fp, user_since, ai_since],
+        |r| {
+            Ok(Learned {
+                kind: r.get(0)?,
+                project_id: r.get(1)?,
+                task_id: r.get(2)?,
+                note: r.get(3)?,
+                source: r.get(4)?,
+            })
+        },
+    )
+    .optional()
+}
+
+/// Stores an answer. An AI answer never overwrites a fresh correction by the user.
+pub fn learn(
+    c: &Connection,
+    fp: &str,
+    l: &Learned,
+    now: &str,
+    user_since: &str,
+) -> rusqlite::Result<()> {
+    c.execute(
+        "INSERT INTO context_cache(fp, kind, project_id, task_id, note, source, updated_at)
+         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(fp) DO UPDATE SET
+           kind=excluded.kind, project_id=excluded.project_id, task_id=excluded.task_id,
+           note=excluded.note, source=excluded.source, updated_at=excluded.updated_at
+         WHERE ?6 = 'user' OR context_cache.source != 'user' OR context_cache.updated_at < ?8",
+        params![
+            fp,
+            l.kind,
+            l.project_id,
+            l.task_id,
+            l.note,
+            l.source,
+            now,
+            user_since
+        ],
+    )?;
+    Ok(())
+}
+
+/// Disk budget and privacy: window titles are kept only as long as they are useful.
+pub fn prune_learned(c: &Connection, before: &str, max_rows: i64) -> rusqlite::Result<()> {
+    c.execute("DELETE FROM context_cache WHERE updated_at < ?", [before])?;
+    c.execute(
+        "DELETE FROM context_cache WHERE fp NOT IN
+           (SELECT fp FROM context_cache ORDER BY updated_at DESC LIMIT ?)",
+        [max_rows],
+    )?;
+    Ok(())
+}
+
+/// Sign-out: forget everything learned about this user's windows.
+pub fn forget_all(c: &Connection) -> rusqlite::Result<()> {
+    c.execute_batch("DELETE FROM entry; DELETE FROM context_cache; DELETE FROM capture;")
+}
+
+// ---------- editing times (W8 review) ----------
+
+fn other_overlaps(
+    c: &Connection,
+    start: &str,
+    end: Option<&str>,
+    skip: &[&str],
+) -> rusqlite::Result<bool> {
+    let mut s = c.prepare(
+        "SELECT local_id FROM entry
+         WHERE deleted=0 AND start < COALESCE(?1, '9999') AND (end IS NULL OR end > ?2)",
+    )?;
+    let ids = s.query_map(params![end, start], |r| r.get::<_, String>(0))?;
+    for id in ids {
+        if !skip.contains(&id?.as_str()) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn touch(c: &Connection, sql: &str, value: &str, local_id: &str) -> rusqlite::Result<()> {
+    c.execute(sql, params![value, local_id])?;
+    Ok(())
+}
+
+/// Moves an entry's start (and end, unless it is running). An adjacent block (one that
+/// ended exactly where this one started, or started exactly where it ended) moves with
+/// the boundary, so fixing a switch time leaves no gap or overlap. Anything else that
+/// would overlap is refused. Times are UTC in solidtime format.
+pub fn set_entry_times(
+    c: &mut Connection,
+    local_id: &str,
+    start: &str,
+    end: Option<&str>,
+) -> Result<(), String> {
+    let db = |e: rusqlite::Error| e.to_string();
+    let tx = c.transaction().map_err(db)?;
+    let e = entry(&tx, local_id)
+        .map_err(db)?
+        .ok_or("This entry no longer exists")?;
+    let end = match (&e.end, end) {
+        (None, _) => None, // running: only the start can move
+        (Some(_), Some(x)) => Some(x),
+        (Some(_), None) => return Err("End time is required".into()),
+    };
+    if end.is_some_and(|x| x <= start) {
+        return Err("The end must be after the start".into());
+    }
+    let prev: Option<Entry> = tx
+        .query_row(
+            &format!(
+                "SELECT {COLS} FROM entry WHERE deleted=0 AND end=? AND local_id != ? LIMIT 1"
+            ),
+            params![e.start, local_id],
+            row,
+        )
+        .optional()
+        .map_err(db)?;
+    let next: Option<Entry> = match &e.end {
+        Some(old_end) => tx
+            .query_row(
+                &format!(
+                    "SELECT {COLS} FROM entry WHERE deleted=0 AND start=? AND local_id != ? LIMIT 1"
+                ),
+                params![old_end, local_id],
+                row,
+            )
+            .optional()
+            .map_err(db)?,
+        None => None,
+    };
+    let mut skip = vec![local_id];
+    if let Some(p) = prev.as_ref().filter(|_| start != e.start) {
+        if start <= p.start.as_str() {
+            return Err("That would remove the previous block entirely; delete it instead".into());
+        }
+        touch(
+            &tx,
+            "UPDATE entry SET end=?, dirty=1, rev=rev+1 WHERE local_id=?",
+            start,
+            &p.local_id,
+        )
+        .map_err(db)?;
+        skip.push(&p.local_id);
+    }
+    if let (Some(n), Some(new_end)) = (next.as_ref(), end)
+        && Some(new_end) != e.end.as_deref()
+    {
+        if n.end.as_deref().is_some_and(|ne| new_end >= ne) {
+            return Err("That would remove the next block entirely; delete it instead".into());
+        }
+        touch(
+            &tx,
+            "UPDATE entry SET start=?, dirty=1, rev=rev+1 WHERE local_id=?",
+            new_end,
+            &n.local_id,
+        )
+        .map_err(db)?;
+        skip.push(&n.local_id);
+    }
+    if other_overlaps(&tx, start, end, &skip).map_err(db)? {
+        return Err("These times overlap another block".into());
+    }
+    tx.execute(
+        "UPDATE entry SET start=?, end=?, dirty=1, rev=rev+1 WHERE local_id=?",
+        params![start, end, local_id],
+    )
+    .map_err(db)?;
+    tx.commit().map_err(db)
+}
+
+/// Splits an entry at `at` into two blocks with the same project; returns the id of the
+/// second part (the running one, if the entry was running).
+pub fn split_entry(c: &mut Connection, local_id: &str, at: &str) -> Result<String, String> {
+    let db = |e: rusqlite::Error| e.to_string();
+    let tx = c.transaction().map_err(db)?;
+    let e = entry(&tx, local_id)
+        .map_err(db)?
+        .ok_or("This entry no longer exists")?;
+    if at <= e.start.as_str() || e.end.as_deref().is_some_and(|x| at >= x) {
+        return Err("Pick a time inside the block".into());
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    tx.execute(
+        "UPDATE entry SET end=?, dirty=1, rev=rev+1 WHERE local_id=?",
+        params![at, local_id],
+    )
+    .map_err(db)?;
+    tx.execute(
+        "INSERT INTO entry(local_id, project_id, task_id, description, start, end, billable, source, context)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![id, e.project_id, e.task_id, e.description, at, e.end, e.billable, e.source, e.context],
+    )
+    .map_err(db)?;
+    tx.commit().map_err(db)?;
+    Ok(id)
+}
+
+// ---------- screenshots kept for the review ----------
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CaptureRow {
+    pub id: String,
+    pub taken_at: String,
+    pub app: String,
+    pub title: String,
+    pub kind: String,
+    pub project_id: Option<String>,
+    pub task_id: Option<String>,
+    pub note: String,
+    pub confidence: Option<f64>,
+    pub source: String,
+}
+
+pub fn add_capture(c: &Connection, r: &CaptureRow) -> rusqlite::Result<()> {
+    c.execute(
+        "INSERT INTO capture(id, taken_at, app, title, kind, project_id, task_id, note, confidence, source)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![r.id, r.taken_at, r.app, r.title, r.kind, r.project_id, r.task_id, r.note, r.confidence, r.source],
+    )?;
+    Ok(())
+}
+
+pub fn captures_between(c: &Connection, from: &str, to: &str) -> rusqlite::Result<Vec<CaptureRow>> {
+    let mut s = c.prepare(
+        "SELECT id, taken_at, app, title, kind, project_id, task_id, note, confidence, source
+         FROM capture WHERE taken_at >= ? AND taken_at < ? ORDER BY taken_at",
+    )?;
+    let rows = s.query_map([from, to], |r| {
+        Ok(CaptureRow {
+            id: r.get(0)?,
+            taken_at: r.get(1)?,
+            app: r.get(2)?,
+            title: r.get(3)?,
+            kind: r.get(4)?,
+            project_id: r.get(5)?,
+            task_id: r.get(6)?,
+            note: r.get(7)?,
+            confidence: r.get(8)?,
+            source: r.get(9)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn delete_capture(c: &Connection, id: &str) -> rusqlite::Result<bool> {
+    Ok(c.execute("DELETE FROM capture WHERE id=?", [id])? == 1)
+}
+
+/// Removes captures taken before `before` and returns their ids (to delete the files).
+pub fn prune_captures(c: &Connection, before: &str) -> rusqlite::Result<Vec<String>> {
+    let ids: Vec<String> = {
+        let mut s = c.prepare("SELECT id FROM capture WHERE taken_at < ?")?;
+        s.query_map([before], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    c.execute("DELETE FROM capture WHERE taken_at < ?", [before])?;
+    Ok(ids)
+}
+
+pub fn capture_ids(c: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut s = c.prepare("SELECT id FROM capture")?;
+    s.query_map([], |r| r.get(0))?.collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn start(
+        c: &mut Connection,
+        p: &str,
+        t: Option<&str>,
+        d: &str,
+        b: bool,
+        at: &str,
+    ) -> rusqlite::Result<()> {
+        super::start(c, &NewEntry::manual(p, t, d, b), at)
+    }
 
     fn mem() -> Connection {
         let c = Connection::open_in_memory().unwrap();
@@ -527,5 +963,431 @@ mod tests {
         assert!(dirty(&c).unwrap().is_empty());
         set_running_description(&c, "fixed").unwrap();
         assert_eq!(dirty(&c).unwrap().len(), 1);
+    }
+
+    fn auto<'a>(p: Option<&'a str>, note: &'a str, fp: &'a str) -> NewEntry<'a> {
+        NewEntry {
+            project_id: p,
+            description: note,
+            auto: true,
+            context: Some(fp),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn migration_from_v2_keeps_rows_as_manual() {
+        let c = Connection::open_in_memory().unwrap();
+        for step in &MIGRATIONS[..2] {
+            c.execute_batch(step).unwrap();
+        }
+        c.execute_batch(
+            "PRAGMA user_version = 2;
+             INSERT INTO entry(local_id, project_id, start, billable) VALUES('old', 'p1', '2026-11-02T09:00:00Z', 1);",
+        )
+        .unwrap();
+        migrate(&c).unwrap();
+        let e = all(&c).remove(0);
+        assert_eq!((e.source.as_str(), e.context), ("manual", None));
+    }
+
+    #[test]
+    fn auto_switch_is_backdated_and_needs_review_has_no_project() {
+        let mut c = mem();
+        super::start(
+            &mut c,
+            &auto(None, "Unclear", "fp-a"),
+            "2026-11-02T09:00:00Z",
+        )
+        .unwrap();
+        super::start(
+            &mut c,
+            &auto(Some("p1"), "Coding", "fp-b"),
+            "2026-11-02T09:20:00Z",
+        )
+        .unwrap();
+        let e = all(&c);
+        assert_eq!(e[0].project_id, None);
+        assert_eq!(e[0].end.as_deref(), Some("2026-11-02T09:20:00Z"));
+        assert_eq!(
+            (e[1].source.as_str(), e[1].context.as_deref()),
+            ("auto", Some("fp-b"))
+        );
+    }
+
+    #[test]
+    fn idle_cut_keeps_auto_source() {
+        let mut c = mem();
+        super::start(&mut c, &auto(Some("p1"), "", "fp"), "2026-11-02T09:00:00Z").unwrap();
+        let id = running(&c).unwrap().unwrap().local_id;
+        cut_running(
+            &mut c,
+            &id,
+            "2026-11-02T10:00:00Z",
+            "2026-11-02T10:30:00Z",
+            None,
+        )
+        .unwrap();
+        let r = running(&c).unwrap().unwrap();
+        assert_eq!(
+            (r.source.as_str(), r.context.as_deref()),
+            ("auto", Some("fp"))
+        );
+    }
+
+    #[test]
+    fn day_entries_returns_overlapping_entries_only() {
+        let mut c = mem();
+        start(&mut c, "p1", None, "", true, "2026-11-01T23:00:00Z").unwrap();
+        start(&mut c, "p2", None, "", true, "2026-11-02T01:00:00Z").unwrap();
+        stop(&mut c, "2026-11-02T02:00:00Z").unwrap();
+        start(&mut c, "p3", None, "", true, "2026-11-03T09:00:00Z").unwrap();
+        let day = day_entries(&c, "2026-11-02T00:00:00Z", "2026-11-03T00:00:00Z").unwrap();
+        let ids: Vec<_> = day
+            .iter()
+            .map(|e| e.project_id.as_deref().unwrap())
+            .collect();
+        assert_eq!(
+            ids,
+            ["p1", "p2"],
+            "an entry crossing midnight belongs to both days"
+        );
+    }
+
+    #[test]
+    fn review_edits_mark_entry_dirty() {
+        let mut c = mem();
+        super::start(&mut c, &auto(None, "Unclear", "fp"), "2026-11-02T09:00:00Z").unwrap();
+        let e = running(&c).unwrap().unwrap();
+        mark_synced(&c, &e.local_id, "r1", e.rev).unwrap();
+        assert!(set_entry_project(&c, &e.local_id, "p9", Some("t9"), true).unwrap());
+        assert!(set_entry_description(&c, &e.local_id, "Fixed").unwrap());
+        let d = dirty(&c).unwrap().remove(0);
+        assert_eq!(
+            (
+                d.project_id.as_deref(),
+                d.task_id.as_deref(),
+                d.billable,
+                d.description.as_str()
+            ),
+            (Some("p9"), Some("t9"), true, "Fixed")
+        );
+        assert!(!set_entry_project(&c, "missing", "p", None, false).unwrap());
+    }
+
+    #[test]
+    fn delete_removes_local_rows_and_queues_synced_ones() {
+        let mut c = mem();
+        start(&mut c, "p1", None, "", true, "2026-11-02T09:00:00Z").unwrap();
+        start(&mut c, "p2", None, "", true, "2026-11-02T10:00:00Z").unwrap();
+        let e = all(&c);
+        mark_synced(&c, &e[1].local_id, "r2", e[1].rev).unwrap();
+        assert!(delete_entry(&c, &e[0].local_id).unwrap());
+        assert!(delete_entry(&c, &e[1].local_id).unwrap());
+        let left = all(&c);
+        assert_eq!(left.len(), 1, "never-sent row is gone");
+        assert!(left[0].deleted && left[0].end.is_some());
+        assert!(
+            running(&c).unwrap().is_none(),
+            "deleting the running entry stops it"
+        );
+        assert_eq!(dirty(&c).unwrap().len(), 1, "server copy will be deleted");
+    }
+
+    fn learned_row(kind: &str, p: Option<&str>, source: &str) -> Learned {
+        Learned {
+            kind: kind.into(),
+            project_id: p.map(String::from),
+            task_id: None,
+            note: "n".into(),
+            source: source.into(),
+        }
+    }
+
+    #[test]
+    fn learned_answers_expire_by_source() {
+        let c = mem();
+        learn(
+            &c,
+            "fp",
+            &learned_row("project", Some("p1"), "ai"),
+            "2026-11-02T09:00:00Z",
+            "2026-10-01T00:00:00Z",
+        )
+        .unwrap();
+        let fresh = learned(&c, "fp", "2026-11-02T08:00:00Z", "2026-10-01T00:00:00Z").unwrap();
+        assert_eq!(fresh.unwrap().project_id.as_deref(), Some("p1"));
+        let stale = learned(&c, "fp", "2026-11-02T10:00:00Z", "2026-10-01T00:00:00Z").unwrap();
+        assert_eq!(stale, None, "AI answers are only reused for a few hours");
+    }
+
+    #[test]
+    fn ai_never_overwrites_a_fresh_user_correction() {
+        let c = mem();
+        let user_since = "2026-10-01T00:00:00Z";
+        learn(
+            &c,
+            "fp",
+            &learned_row("project", Some("mine"), "user"),
+            "2026-11-02T09:00:00Z",
+            user_since,
+        )
+        .unwrap();
+        learn(
+            &c,
+            "fp",
+            &learned_row("project", Some("ai"), "ai"),
+            "2026-11-02T10:00:00Z",
+            user_since,
+        )
+        .unwrap();
+        let hit = learned(&c, "fp", "2026-11-02T00:00:00Z", user_since)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (hit.project_id.as_deref(), hit.source.as_str()),
+            (Some("mine"), "user")
+        );
+        // the user may change their mind
+        learn(
+            &c,
+            "fp",
+            &learned_row("project", Some("other"), "user"),
+            "2026-11-02T11:00:00Z",
+            user_since,
+        )
+        .unwrap();
+        let hit = learned(&c, "fp", "2026-11-02T00:00:00Z", user_since)
+            .unwrap()
+            .unwrap();
+        assert_eq!(hit.project_id.as_deref(), Some("other"));
+    }
+
+    fn closed(c: &mut Connection, p: &str, from: &str, to: &str) -> String {
+        start(c, p, None, "", true, from).unwrap();
+        let id = running(c).unwrap().unwrap().local_id;
+        stop(c, to).unwrap();
+        id
+    }
+
+    fn times(c: &Connection, id: &str) -> (String, Option<String>) {
+        let e = entry(c, id).unwrap().unwrap();
+        (e.start, e.end)
+    }
+
+    #[test]
+    fn moving_a_boundary_moves_the_adjacent_block() {
+        let mut c = mem();
+        let a = closed(&mut c, "A", "2026-11-19T09:00:00Z", "2026-11-19T10:00:00Z");
+        start(&mut c, "B", None, "", true, "2026-11-19T10:00:00Z").unwrap();
+        stop(&mut c, "2026-11-19T11:00:00Z").unwrap();
+        let b = all(&c)[1].local_id.clone();
+        // the switch really happened at 10:20
+        set_entry_times(
+            &mut c,
+            &a,
+            "2026-11-19T09:00:00Z",
+            Some("2026-11-19T10:20:00Z"),
+        )
+        .unwrap();
+        assert_eq!(times(&c, &a).1.as_deref(), Some("2026-11-19T10:20:00Z"));
+        assert_eq!(times(&c, &b).0, "2026-11-19T10:20:00Z");
+        // and earlier than first thought
+        set_entry_times(
+            &mut c,
+            &b,
+            "2026-11-19T09:40:00Z",
+            Some("2026-11-19T11:00:00Z"),
+        )
+        .unwrap();
+        assert_eq!(times(&c, &a).1.as_deref(), Some("2026-11-19T09:40:00Z"));
+        assert_eq!(dirty(&c).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn time_edits_never_create_overlaps_or_empty_blocks() {
+        let mut c = mem();
+        let a = closed(&mut c, "A", "2026-11-19T09:00:00Z", "2026-11-19T10:00:00Z");
+        let b = closed(&mut c, "B", "2026-11-19T10:30:00Z", "2026-11-19T11:00:00Z");
+        // not adjacent: overlapping B is refused
+        assert!(
+            set_entry_times(
+                &mut c,
+                &a,
+                "2026-11-19T09:00:00Z",
+                Some("2026-11-19T10:45:00Z")
+            )
+            .is_err()
+        );
+        assert!(
+            set_entry_times(
+                &mut c,
+                &a,
+                "2026-11-19T09:30:00Z",
+                Some("2026-11-19T09:10:00Z")
+            )
+            .is_err()
+        );
+        // adjacent case: swallowing the neighbour entirely is refused
+        let x = closed(&mut c, "X", "2026-11-19T12:00:00Z", "2026-11-19T12:30:00Z");
+        let y = closed(&mut c, "Y", "2026-11-19T12:30:00Z", "2026-11-19T13:00:00Z");
+        assert!(
+            set_entry_times(
+                &mut c,
+                &x,
+                "2026-11-19T12:00:00Z",
+                Some("2026-11-19T13:00:00Z")
+            )
+            .is_err()
+        );
+        assert_eq!(
+            times(&c, &y).0,
+            "2026-11-19T12:30:00Z",
+            "refused edit changes nothing"
+        );
+        assert_eq!(times(&c, &b).0, "2026-11-19T10:30:00Z");
+    }
+
+    #[test]
+    fn running_entry_start_can_move_but_end_stays_open() {
+        let mut c = mem();
+        let a = closed(&mut c, "A", "2026-11-19T09:00:00Z", "2026-11-19T10:00:00Z");
+        start(&mut c, "B", None, "", true, "2026-11-19T10:00:00Z").unwrap();
+        let b = running(&c).unwrap().unwrap().local_id;
+        set_entry_times(
+            &mut c,
+            &b,
+            "2026-11-19T09:50:00Z",
+            Some("2026-11-19T12:00:00Z"),
+        )
+        .unwrap();
+        assert_eq!(times(&c, &b), ("2026-11-19T09:50:00Z".to_string(), None));
+        assert_eq!(times(&c, &a).1.as_deref(), Some("2026-11-19T09:50:00Z"));
+    }
+
+    #[test]
+    fn split_makes_two_blocks_with_the_same_project() {
+        let mut c = mem();
+        let a = closed(&mut c, "A", "2026-11-19T09:00:00Z", "2026-11-19T11:00:00Z");
+        let second = split_entry(&mut c, &a, "2026-11-19T10:15:00Z").unwrap();
+        assert_eq!(times(&c, &a).1.as_deref(), Some("2026-11-19T10:15:00Z"));
+        assert_eq!(
+            times(&c, &second),
+            (
+                "2026-11-19T10:15:00Z".into(),
+                Some("2026-11-19T11:00:00Z".into())
+            )
+        );
+        assert_eq!(
+            entry(&c, &second).unwrap().unwrap().project_id.as_deref(),
+            Some("A")
+        );
+        assert!(
+            split_entry(&mut c, &a, "2026-11-19T09:00:00Z").is_err(),
+            "edge is not inside"
+        );
+        // splitting the running entry keeps the second part running
+        start(&mut c, "R", None, "", true, "2026-11-19T12:00:00Z").unwrap();
+        let r = running(&c).unwrap().unwrap().local_id;
+        let tail = split_entry(&mut c, &r, "2026-11-19T12:30:00Z").unwrap();
+        assert_eq!(running(&c).unwrap().unwrap().local_id, tail);
+    }
+
+    fn cap(id: &str, at: &str) -> CaptureRow {
+        CaptureRow {
+            id: id.into(),
+            taken_at: at.into(),
+            app: "Code".into(),
+            title: "index.ts — mmcg-platform".into(),
+            kind: "project".into(),
+            project_id: Some("A".into()),
+            task_id: None,
+            note: String::new(),
+            confidence: None,
+            source: "keywords".into(),
+        }
+    }
+
+    #[test]
+    fn captures_are_listed_by_time_pruned_and_forgotten() {
+        let c = mem();
+        add_capture(&c, &cap("1", "2026-11-17T09:00:00Z")).unwrap();
+        add_capture(&c, &cap("2", "2026-11-19T09:00:00Z")).unwrap();
+        add_capture(&c, &cap("3", "2026-11-19T09:05:00Z")).unwrap();
+        let day = captures_between(&c, "2026-11-19T00:00:00Z", "2026-11-20T00:00:00Z").unwrap();
+        assert_eq!(
+            day.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(),
+            ["2", "3"]
+        );
+        assert_eq!(prune_captures(&c, "2026-11-18T00:00:00Z").unwrap(), ["1"]);
+        assert!(delete_capture(&c, "2").unwrap());
+        assert_eq!(capture_ids(&c).unwrap(), ["3"]);
+        forget_all(&c).unwrap();
+        assert!(capture_ids(&c).unwrap().is_empty());
+    }
+
+    #[test]
+    fn learned_cache_is_pruned_and_cleared_on_sign_out() {
+        let c = mem();
+        let u = "2026-10-01T00:00:00Z";
+        for (i, t) in [
+            "2026-11-01T09:00:00Z",
+            "2026-11-02T09:00:00Z",
+            "2026-11-02T10:00:00Z",
+        ]
+        .iter()
+        .enumerate()
+        {
+            learn(
+                &c,
+                &format!("fp{i}"),
+                &learned_row("neutral", None, "ai"),
+                t,
+                u,
+            )
+            .unwrap();
+        }
+        prune_learned(&c, "2026-11-02T00:00:00Z", 1).unwrap();
+        let n: i64 = c
+            .query_row("SELECT COUNT(*) FROM context_cache", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        forget_all(&c).unwrap();
+        let n: i64 = c
+            .query_row("SELECT COUNT(*) FROM context_cache", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0);
+    }
+}
+
+/// Upgrade check on a copy of a real database:
+/// `IRA_DB_COPY=/path/to/copy/tracker.db cargo test upgrade_copy -- --ignored --nocapture`
+#[cfg(test)]
+mod upgrade_check {
+    #[test]
+    #[ignore]
+    fn upgrade_copy() {
+        let path = std::env::var("IRA_DB_COPY").expect("set IRA_DB_COPY");
+        let c = super::open(std::path::Path::new(&path)).expect("open + migrate");
+        let v: i64 = c
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        let n: i64 = c
+            .query_row("SELECT COUNT(*) FROM entry", [], |r| r.get(0))
+            .unwrap();
+        let manual: i64 = c
+            .query_row(
+                "SELECT COUNT(*) FROM entry WHERE source='manual'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let ok: String = c
+            .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+            .unwrap();
+        println!("after upgrade: version {v}, {n} entries ({manual} manual), integrity {ok}");
+        assert_eq!(v as usize, super::MIGRATIONS.len());
+        assert_eq!(n, manual);
+        assert_eq!(ok, "ok");
     }
 }
