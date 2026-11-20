@@ -25,3 +25,6 @@ server/solidtime/app-storage/*
 .idea/
 __pycache__/
 .venv/
+.pytest_cache/
+.ruff_cache/
+server/ira-service/*.log

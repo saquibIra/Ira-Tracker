@@ -1,0 +1,108 @@
+# Production stack on one Google Compute Engine VM (see docs/DEPLOY_GCP.md).
+#
+#   https://$DOMAIN/            solidtime (web app + API for the widget)
+#   https://$DOMAIN/ira/...     Ira service (AI auto-tracking, admin page at /ira/admin/)
+#   https://$DOMAIN/download/   installers for employees
+#
+# Secrets and settings live outside the repository in $DATA_DIR (default /opt/ira-data),
+# created by bootstrap.sh. Container logs go to Google Cloud Logging (gcplogs driver);
+# `docker compose logs` still works on the VM.
+
+x-logging: &logging
+  driver: gcplogs
+
+x-solidtime: &solidtime
+  image: "solidtime/solidtime:${SOLIDTIME_IMAGE_TAG:-latest}"
+  restart: always
+  user: "1000:1000"
+  env_file: ["${DATA_DIR:-/opt/ira-data}/laravel.env"]
+  volumes:
+    - solidtime-storage:/var/www/html/storage
+  networks: [internal]
+  depends_on: [database]
+  logging: *logging
+
+services:
+  caddy:
+    image: caddy:2
+    restart: always
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DOMAIN: "${DOMAIN:?set DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL:?set ACME_EMAIL}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - "${DATA_DIR:-/opt/ira-data}/downloads:/srv/downloads:ro"
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [internal]
+    logging: *logging
+
+  app:
+    <<: *solidtime
+    environment:
+      CONTAINER_MODE: http
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health-check/up"]
+
+  scheduler:
+    <<: *solidtime
+    environment:
+      CONTAINER_MODE: scheduler
+    healthcheck:
+      test: ["CMD", "healthcheck"]
+
+  queue:
+    <<: *solidtime
+    environment:
+      CONTAINER_MODE: worker
+      WORKER_COMMAND: "php /var/www/html/artisan queue:work"
+    healthcheck:
+      test: ["CMD", "healthcheck"]
+
+  database:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: "${DB_DATABASE:-solidtime}"
+      POSTGRES_USER: "${DB_USERNAME:-solidtime}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?set DB_PASSWORD}"
+    volumes:
+      - database-storage:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "${DB_DATABASE:-solidtime}", "-U", "${DB_USERNAME:-solidtime}"]
+      retries: 3
+      timeout: 5s
+    logging: *logging
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: always
+    networks: [internal]
+    logging: *logging
+
+  ira-service:
+    build: ../../server/ira-service
+    restart: always
+    env_file: ["${DATA_DIR:-/opt/ira-data}/ira-service.env"]
+    environment:
+      # Same public URL the widgets use (HTTPS through Caddy).
+      SOLIDTIME_URL: "https://${DOMAIN}"
+      IRA_DB_PATH: /data/ira-service.db
+      IRA_LOG_FORMAT: json
+    volumes:
+      - ira-data:/data
+    networks: [internal]
+    depends_on: [app]
+    logging: *logging
+
+networks:
+  internal:
+
+volumes:
+  solidtime-storage:
+  database-storage:
+  ira-data:
+  caddy-data:
+  caddy-config:

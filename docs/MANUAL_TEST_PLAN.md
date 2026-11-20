@@ -94,6 +94,50 @@ Threshold is 30 s because of `IRA_IDLE_SECS=30` (default 10 min).
 | 29 | Stop the timer, stay idle 40 s, return | **No** prompt (only tracked time is checked) |
 | 30 | Start a timer, idle 40 s, don't answer the prompt; click the tray icon | Menu shows "Away N min — Keep / Discard / Assign…"; clicking it brings the prompt back |
 
+### B6. AI auto-tracking (AT1–AT8)
+
+**Setup**
+
+1. Start the Ira service with `ANTHROPIC_API_KEY` set; see [server/ira-service/README.md](../server/ira-service/README.md).
+2. As admin, open http://localhost:8010/admin and add keywords to two of the engineer's projects:
+   - **Acme – POS Revamp:** `acme-pos, POS-`
+   - **Acme – Mobile App:** `acme-mobile, MOB-`
+3. Start the widget with fast timings:
+
+   ```bash
+   IRA_AUTO_TICK_SECS=5 IRA_CAPTURE_SECS=30 npm run tauri dev
+   ```
+
+   On the service, also set `IRA_PIN_SECS=60`, so a manual start or stop pauses auto-switching for 1 minute instead of 30. To test outside work hours, set `IRA_WORK_START=00:00` and `IRA_WORK_END=23:59`. Restart the service after changing these.
+
+| # | Do this | Expect |
+|---|---------|--------|
+| 40 | Sign in (or tray → Auto-tracking → Set up…) | Auto-tracking window explains what is captured, when, where it goes, what is kept, and the excluded apps |
+| 41 | Enter `http://localhost:8010`, click **I agree, turn on auto-tracking** | Status "On"; macOS asks for Screen Recording. Allow Ira Tracker in System Settings, quit and reopen the widget; the window now shows "allowed" |
+| 42 | Stop any timer; open a Finder or editor window whose title contains `acme-pos` (e.g. a folder named `acme-pos`) | Within ~10 s a timer starts on POS Revamp; tray shows "· auto" |
+| 43 | Switch to a window titled with `acme-mobile` and stay > 2 min | Timer switches to Mobile App, backdated to when you switched (check the start time in the review) |
+| 44 | Switch to `acme-mobile` for only 30 s, then back | **No** switch (hysteresis) |
+| 45 | Open a browser on a page about one of your projects without keywords in the title; wait ≥ 30 s | After the next allowed AI call the timer switches to that project (or a "Needs review" block if the AI is unsure). In the admin page → AI usage, a Haiku call appears (and an Opus call if it was unsure) |
+| 46 | Open Slack or Mail for 3 min | Timer stays on the current project (communication is neutral) |
+| 47 | Open 1Password (or another excluded app) | No AI call in the usage log while it is in front; after 15 min a "Private app" review block |
+| 48 | Pick a different project with ⌘⇧T | Timer switches; auto-tracking does not override it for the pin time (30 min by default, 1 min with `IRA_PIN_SECS=60`; status "following your manual pick") |
+| 49 | Tray → Auto-tracking → **Pause 30 minutes** | Timer stops; nothing is captured; status "Paused until …"; **Resume** restarts tracking |
+| 50 | Stop the Ira service; keep working on a window without keywords for 15 min | Status shows "Ira service unreachable"; after 15 min the period becomes a "Needs review" block; no crash, no screenshot written anywhere (`ls ~/Library/Application\ Support/com.ira.tracker/`) |
+| 51 | Sign out, sign in as another user | Auto-tracking is off again and asks for consent (consent and learned windows are per person) |
+
+### B7. End-of-day review (W8)
+
+| # | Do this | Expect |
+|---|---------|--------|
+| 52 | Tray → **Review today…** | Today's blocks with times, project, description, duration, auto/manual tag; gaps ≥ 5 min shown in italics; "Needs review" blocks highlighted |
+| 53 | Click a "Needs review" block's name, pick a project | Block gets the project; within a minute it syncs to solidtime. Next time the same window appears, auto-tracking picks that project without AI |
+| 54 | Edit a description, press Enter | Saved and synced |
+| 55 | Click × then **Delete?** on a block | Block removed (and deleted in solidtime) |
+| 56 | **Submit day** while a review block remains | Button disabled with a hint |
+| 57 | Fix all, **Submit day** | "Submitted at HH:MM"; admin page → Day submissions shows the engineer as submitted |
+| 58 | Set `IRA_REVIEW_AT` to a minute from now on the service, restart widget | A small reminder appears top-right without taking focus and disappears after 8 s (or opens the review) |
+| 59 | ‹ / › in the review | Previous days (up to 6 back) |
+
 ## Part C — Admin checks in solidtime
 
 | # | Do this | Expect |
@@ -104,7 +148,7 @@ Threshold is 30 s because of `IRA_IDLE_SECS=30` (default 10 min).
 
 ## Not testable yet
 
-End-of-day review (W8), reminders (W11), repo/branch and calendar suggestions (W12–W14), signed auto-update (W15), and the reconciliation service (R1–R6, billing and utilization exports). See [STATUS.md](STATUS.md).
+Reminders (W11), ticket keys and calendar suggestions (W13–W14), auto-tracking on Windows devices, signed auto-update (W15), and the reconciliation service (R1–R6, billing and utilization exports). See [STATUS.md](STATUS.md).
 
 ## Reporting a problem
 

@@ -66,3 +66,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m py_compile server/seed/seed_demo.py
+
+  ira-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/ira-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.5"
+      - run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format
+        run: uv run ruff format --check .
+      - name: Tests
+        run: uv run pytest -q
+      - name: Dependency audit
+        run: uv run pip-audit

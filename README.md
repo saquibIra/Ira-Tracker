@@ -4,9 +4,11 @@ A lightweight time-tracking system for Ira engineers: a menu-bar/tray widget rec
 
 - **Time server:** [solidtime](https://www.solidtime.io) (open source, self-hosted in Docker), the system of record.
 - **Widget ("Ira Tracker"):** Tauri 2 tray app (Rust + TypeScript), built here.
-- **Reconciliation service:** Python FastAPI service for allocation checks, gap detection and billing exports (planned).
+- **Ira service:** Python FastAPI service (`server/ira-service`). It runs AI auto-tracking (Claude classifies which project the screen belongs to), the project hints admin page and day submissions. Reconciliation (allocation checks, gap detection, billing exports) will be added here.
 
-Design principles: *confirm, don't type*; invisible when idle; running timer by default; fix it later in an end-of-day review. **No surveillance:** no screenshots, keystrokes, mouse tracking, window titles or URLs are captured.
+Design principles: *confirm, don't type*; invisible when idle; the timer follows your work automatically; fix it later in an end-of-day review.
+
+**Privacy.** Auto-tracking is opt-in, with a consent screen. It reads the front window's app and title locally. While tracking it takes a small grayscale screenshot every few minutes (work hours only). Screenshots stay on the engineer's own computer for a few days so they can check and fix their day in the review, and are then deleted. Only when the window title is not enough is a screenshot sent to the Ira service for classification; the server never stores it. No keystrokes or mouse activity are ever captured. Password managers and personal messengers are excluded, and engineers can pause it at any time for private time.
 
 ## Repository layout
 
@@ -15,8 +17,11 @@ Design principles: *confirm, don't type*; invisible when idle; running timer by 
 ├── widget/              Tauri tray app (Ira Tracker)
 │   ├── src/             TypeScript UI (quick switcher, sign-in)
 │   └── src-tauri/       Rust core: tray, SQLite queue, sync, keychain
+├── deploy/gcp/          Production: one Google Cloud VM (Docker, HTTPS, Gemini, logs, backups)
+├── scripts/             Release scripts (Mac installer)
 ├── server/
 │   ├── solidtime/       Docker Compose for self-hosted solidtime
+│   ├── ira-service/     FastAPI: AI auto-tracking, hints admin, day submissions
 │   └── seed/            Demo data loader
 ├── docs/                Requirements status and decisions
 └── CLAUDE.md            Working notes for Claude Code
@@ -30,11 +35,16 @@ Prerequisites: Docker Desktop, Node 20+, Rust (`rustup`), Xcode command-line too
    ```bash
    cd server/solidtime && docker compose up -d     # http://localhost:8000
    ```
-2. **Widget**
+2. **Ira service** (AI auto-tracking): put your Anthropic API key in `server/ira-service/.env` (copy `.env.example`), then:
+   ```bash
+   cd server/ira-service && uv run --env-file .env uvicorn --factory ira_service.main:create_app --port 8010
+   ```
+   Admin page: http://localhost:8010/admin (project descriptions and keywords, AI cost, day submissions). Details: [server/ira-service/README.md](server/ira-service/README.md).
+3. **Widget**
    ```bash
    cd widget && npm install && npm run tauri dev
    ```
-   Sign in with a solidtime personal API token (solidtime → Profile → API Tokens). Then press **⌘⇧T** (Cmd+Shift+T) to switch projects.
+   Sign in with a solidtime personal API token (solidtime → Profile → API Tokens). The auto-tracking window opens next: read it, enter the Ira service address (`http://localhost:8010`) and turn it on. On macOS, allow Ira Tracker under System Settings → Privacy & Security → Screen Recording, then restart the app. **⌘⇧T** (Cmd+Shift+T) still switches projects by hand.
 
 Developer checklist: [widget/README.md](widget/README.md). Full manual test plan (engineer + admin): [docs/MANUAL_TEST_PLAN.md](docs/MANUAL_TEST_PLAN.md).
 
@@ -44,18 +54,23 @@ Developer checklist: [widget/README.md](widget/README.md). Full manual test plan
 |------|--------|
 | solidtime self-hosted locally + demo data | Done |
 | Widget: sign-in, tray state, recent list, hotkey switcher, descriptions, offline queue + sync, idle/lock/sleep prompt (W1–W7, W9, W10) | Done (macOS tested in dev; Windows built in CI) |
-| Widget: end-of-day review, reminders (W8, W11) | Next |
+| AI auto-tracking: timer follows the work (window context, keywords, Claude on screenshots), consent, pause, excluded apps (AT1–AT8) | Done (live Claude test pending API key) |
+| Widget: end-of-day review with Submit (W8) | Done |
+| Widget: reminders (W11) | Next |
 | Widget: signed builds, auto-update (W15) | Needs code-signing certificates |
-| Reconciliation service (R1–R6, reports) | Planned |
-| Smart suggestions: repo/branch, ticket keys, calendar (W12–W14) | Phase 2 |
+| Reconciliation (R1–R6, reports) in the Ira service | Planned |
+| Ticket keys into descriptions, calendar (W13, W14) | Phase 2 |
 
 Full requirement-by-requirement check: [docs/STATUS.md](docs/STATUS.md).
+
+**Production:** [docs/DEPLOY_GCP.md](docs/DEPLOY_GCP.md) covers the Google Cloud deployment, settings, logs, updates and installers. [docs/INSTALL.md](docs/INSTALL.md) is the install guide for employees.
 
 ## Tests
 
 ```bash
 cd widget && npm test                      # UI unit tests
 cd widget/src-tauri && cargo test          # Rust unit tests
+cd server/ira-service && uv run pytest     # Ira service tests (Claude and solidtime are faked)
 ```
 
 CI (`.github/workflows/ci.yml`) runs formatting, lint, tests and dependency audits on macOS and Windows for every push and pull request.
