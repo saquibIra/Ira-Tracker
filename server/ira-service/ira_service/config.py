@@ -103,9 +103,6 @@ class Settings:
     unresolved_review_secs: int = 900
     capture_max_px: int = 1568
     capture_quality: int = 60
-    work_days: tuple[int, ...] = (1, 2, 3, 4, 5)
-    work_start: str = "09:00"
-    work_end: str = "19:00"
     review_at: str = "18:30"
     excluded_apps: tuple[str, ...] = DEFAULT_EXCLUDED_APPS
     # Screenshots kept on each engineer's own computer for the day review (0 = none).
@@ -155,25 +152,12 @@ class Settings:
             if value and not re.fullmatch(r"[a-z0-9][a-z0-9.\-]{2,63}", value):
                 raise ConfigError(f"{name} is not a valid model id")
 
-        days_raw = env.get("IRA_WORK_DAYS", "").strip() or "1,2,3,4,5"
-        try:
-            days = tuple(sorted({int(d) for d in days_raw.split(",") if d.strip()}))
-        except ValueError as e:
-            raise ConfigError("IRA_WORK_DAYS must be a list like 1,2,3,4,5 (1 = Monday)") from e
-        if not days or any(d < 1 or d > 7 for d in days):
-            raise ConfigError("IRA_WORK_DAYS must contain days 1 (Monday) to 7 (Sunday)")
-
         excluded_raw = env.get("IRA_EXCLUDED_APPS")
         excluded = (
             DEFAULT_EXCLUDED_APPS
             if excluded_raw is None
             else tuple(a.strip() for a in excluded_raw.split(",") if a.strip())
         )
-
-        work_start = _hhmm(env, "IRA_WORK_START", cls.work_start)
-        work_end = _hhmm(env, "IRA_WORK_END", cls.work_end)
-        if work_end <= work_start:
-            raise ConfigError("IRA_WORK_END must be later than IRA_WORK_START")
 
         return cls(
             solidtime_url=url,
@@ -198,9 +182,6 @@ class Settings:
             ),
             capture_max_px=_int(env, "IRA_CAPTURE_MAX_PX", cls.capture_max_px, 640, 2576),
             capture_quality=_int(env, "IRA_CAPTURE_QUALITY", cls.capture_quality, 20, 95),
-            work_days=days,
-            work_start=work_start,
-            work_end=work_end,
             review_at=_hhmm(env, "IRA_REVIEW_AT", cls.review_at),
             excluded_apps=excluded,
             keep_screenshots_days=_int(env, "IRA_KEEP_SCREENSHOTS_DAYS", cls.keep_screenshots_days, 0, 14),
@@ -219,7 +200,6 @@ class Settings:
             "gemini_location": self.gemini_location if self.ai_provider == "gemini" else None,
             "capture_interval_secs": self.capture_interval_secs,
             "keep_screenshots_days": self.keep_screenshots_days,
-            "work": f"{self.work_start}-{self.work_end} days {','.join(map(str, self.work_days))}",
             "solidtime_url": self.solidtime_url,
         }
 
@@ -234,9 +214,11 @@ class Settings:
             "unresolved_review_secs": self.unresolved_review_secs,
             "capture_max_px": self.capture_max_px,
             "capture_quality": self.capture_quality,
-            "work_days": list(self.work_days),
-            "work_start": self.work_start,
-            "work_end": self.work_end,
+            # People track any day, any time. Widgets up to 0.2.2 still read work hours
+            # from here, so they get the whole week and day until they update.
+            "work_days": [1, 2, 3, 4, 5, 6, 7],
+            "work_start": "00:00",
+            "work_end": "23:59",
             "review_at": self.review_at,
             "excluded_apps": list(self.excluded_apps),
             "keep_screenshots_days": self.keep_screenshots_days,

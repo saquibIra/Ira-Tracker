@@ -1,6 +1,6 @@
 //! W8 end-of-day review: the day's blocks (auto and manual), "Needs review" blocks to
 //! fix, edits that teach auto-tracking, and Submit. A small reminder appears at the
-//! configured review time (default 18:30) on work days.
+//! configured review time (default 18:30) on days with tracked time.
 
 use crate::{AppState, Item, ai, auto, changed, db, fmt_time, input, shots};
 use chrono::{DateTime, Duration as Span, Local, NaiveDate, TimeZone, Utc};
@@ -320,8 +320,8 @@ pub async fn submit_day(app: AppHandle, offset: i64) -> Result<(), String> {
     Ok(())
 }
 
-/// At the review time on work days, once per day: a small reminder that does not take
-/// focus and disappears after 8 s.
+/// At the review time, once per day and only on days with tracked time (people work any
+/// day): a small reminder that does not take focus and disappears after 8 s.
 pub fn maybe_nudge(app: &AppHandle) {
     let st = app.state::<AppState>();
     if st.cfg.lock().unwrap().is_none() {
@@ -330,17 +330,22 @@ pub fn maybe_nudge(app: &AppHandle) {
     let now = Local::now();
     let (due, today) = {
         let p = st.policy.lock().unwrap();
-        let day = chrono::Datelike::weekday(&now).number_from_monday();
         let at = auto::parse_hhmm(&p.review_at);
-        let due = p.work_days.contains(&day) && at.is_some_and(|a| now.time() >= a);
-        (due, now.format("%Y-%m-%d").to_string())
+        (
+            at.is_some_and(|a| now.time() >= a),
+            now.format("%Y-%m-%d").to_string(),
+        )
     };
     if !due {
         return;
     }
     {
         let db = st.db.lock().unwrap();
-        if db::kv_get(&db, "nudged").as_deref() == Some(today.as_str())
+        let (_, from, to) = day_range(now.date_naive(), 0);
+        let tracked =
+            db::day_entries(&db, &fmt_time(from), &fmt_time(to)).is_ok_and(|e| !e.is_empty());
+        if !tracked
+            || db::kv_get(&db, "nudged").as_deref() == Some(today.as_str())
             || db::kv_get(&db, &format!("submitted:{today}")).is_some()
         {
             return;

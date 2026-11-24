@@ -36,7 +36,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started · ⏭ later phase
 | AT4 | Screenshots: visible to the engineer, never stored on the server | ✅ | Changed 19 Nov 2026 (consent v2): one per capture interval while tracking, kept only on the engineer's computer for 3 days (`IRA_KEEP_SCREENSHOTS_DAYS`, 0 = none) and shown in the day review; sent to the service only for AI classification; the service stores no image, title or token |
 | AT9 | Review shows the screen and the project; fix project and times | ✅ | Thumbnails per block (orange border = screenshot points to another project), full viewer with how the project was decided, split at a screenshot, edit start/end with the neighbouring block following |
 | AT5 | Cheap but accurate, configurable model | ✅ | Claude Haiku 5.5, re-checked by Claude Opus 5.5 below 0.7 confidence; models, thresholds, effort via env (`server/ira-service/.env.example`) |
-| AT6 | Private time: pause, excluded apps, work hours only | ✅ | Tray: Pause 30 min / 1 h / until tomorrow (stops the timer); excluded apps (password managers, personal messengers) never captured |
+| AT6 | Private time: pause, excluded apps | ✅ | Tray: Pause 30 min / 1 h / until midnight (stops the timer); excluded apps (password managers, personal messengers) never captured. Work hours removed 24 Nov 2026 (people track whenever they work; consent v4) |
 | AT7 | Manual override always wins; corrections teach the system | ✅ | Manual start/stop pins auto-switching for 30 min. Review corrections teach the cache (30 days), and AI answers are reused for 4 h, both only for specific window titles (generic ones like "Zoom Meeting" are re-checked) |
 | AT8 | Admin: project descriptions/keywords, AI usage and cost, day submissions | ✅ | `/admin` on the Ira service (owner/admin role in solidtime) |
 | AT10 | Production on Google Cloud, Gemini, logs, easy distribution | 🟡 | Deploy kit `deploy/gcp/` (one VM, HTTPS, Vertex AI Gemini via service account, Cloud Logging, daily snapshots). Structured service logs with request ids; app log file. Installers: `scripts/release-mac.sh`, Windows via Actions. Pending: running it (needs project, domain), Apple Developer ID for warning-free Mac install, auto-update (W15) |
@@ -56,7 +56,7 @@ Platforms: the document requires **macOS and Windows** (acceptance criteria) and
 | Startup | < 2 s to tray | To measure |
 | Network | batched, ≤ 1 sync/min while running; nothing while stopped | ✅ `sync_loop` enforces the 60 s minimum interval; no calls when nothing is queued. Auto-tracking adds at most one classify call (≈ 100 KB) per capture interval, only when cache and keywords cannot decide, plus an hourly policy/hints check (ETag) |
 | Disk | SQLite < 10 MB | ✅ synced entries older than 7 days are pruned |
-| Context polling (W12) | event-driven or ≤ 30 s, only while running | ✅ auto-tracking reads the front window every 20 s, only while enabled, in work hours, not paused and not idle |
+| Context polling (W12) | event-driven or ≤ 30 s, only while running | ✅ auto-tracking reads the front window every 20 s, only while enabled, not paused and not idle |
 | UI | no focus stealing; toasts non-modal, auto-dismiss 8 s | ✅ idle prompt opens without focus; only user-invoked windows take focus |
 | Privacy | changed 19 Nov 2026: no keystrokes or mouse tracking; window titles and screenshots only for opted-in auto-tracking | ✅ see AT1, AT4, AT6. Idle detection still reads only "seconds since last input" |
 

@@ -309,7 +309,7 @@ fn refresh_tray(app: &AppHandle) -> tauri::Result<()> {
             sub = sub
                 .text("pause:30", "Pause 30 minutes (private)")
                 .text("pause:60", "Pause 1 hour (private)")
-                .text("pause:day", "Pause until tomorrow");
+                .text("pause:day", "Pause until midnight (private)");
         }
         sub = sub.separator().text(
             "auto-settings",

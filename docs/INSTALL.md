@@ -40,7 +40,7 @@ That's it. The tray icon turns green when a timer runs, and switching between pr
 
 ## Privacy
 
-- **When:** a small grayscale screenshot every 5 minutes, during work hours, while tracking.
+- **When:** a small grayscale screenshot every 5 minutes while tracking, whenever you work. Pause it for private time.
 - **Where it's kept:** only on **your** computer, for 3 days. You can delete any of them in the review.
 - **The AI:** when the window title isn't enough, the screenshot is sent to Ira's server, which asks the AI which project it is. The server doesn't keep it.
 - **Never captured:** keystrokes, mouse activity, password managers, personal messengers, or anything while paused or locked.

@@ -39,7 +39,7 @@ For real use, put HTTPS (Caddy or Nginx) in front. The widget refuses plain HTTP
 5. The answer is validated. A reference that was not offered (hallucinated, or injected through text on screen) is discarded. Confidence is clamped and the note is cleaned.
 6. One usage row is logged per model call: tokens, latency, outcome. There is no content in it.
 
-Everything in `.env.example` can be configured: models, thresholds, effort, capture interval, work hours, review time, excluded apps, rate limit.
+Everything in `.env.example` can be configured: models, thresholds, effort, capture interval, review time, excluded apps, rate limit.
 
 ### Cost
 

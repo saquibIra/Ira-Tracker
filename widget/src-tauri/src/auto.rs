@@ -15,7 +15,7 @@
 use crate::ai::{self, Classification, Hint, Policy};
 use crate::context::{self, Active, Permission};
 use crate::{AppState, capture, changed, db, fmt_time, idle, input, shots};
-use chrono::{DateTime, Datelike, Duration as Span, Local, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Duration as Span, Local, NaiveTime, Utc};
 use serde::Serialize;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
@@ -23,7 +23,7 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Bump when the consent text changes; users then confirm again.
 // 2: screenshots kept on this computer for the review. 3: names the AI provider the
 // server uses (Gemini or Claude) and shows the server's real policy.
-pub const CONSENT_VERSION: &str = "3";
+pub const CONSENT_VERSION: &str = "4";
 /// Context check interval while auto-tracking (the doc's ≤ 30 s polling budget).
 const TICK_SECS: u64 = 20;
 /// No input for this long: nothing changes on screen, skip the check.
@@ -106,29 +106,10 @@ pub fn parse_hhmm(s: &str) -> Option<NaiveTime> {
     NaiveTime::parse_from_str(s, "%H:%M").ok()
 }
 
-pub fn in_work_hours(now: DateTime<Local>, p: &Policy) -> bool {
-    let day = now.weekday().number_from_monday();
-    let (Some(a), Some(b)) = (parse_hhmm(&p.work_start), parse_hhmm(&p.work_end)) else {
-        return true;
-    };
-    p.work_days.contains(&day) && now.time() >= a && now.time() < b
-}
-
-/// Start of the next work day (for "Pause until tomorrow").
-pub fn next_work_start(now: DateTime<Local>, p: &Policy) -> DateTime<Utc> {
-    let start = parse_hhmm(&p.work_start).unwrap_or(NaiveTime::from_hms_opt(9, 0, 0).unwrap());
-    let mut d = now.date_naive();
-    for _ in 0..8 {
-        d = d.succ_opt().unwrap_or(d);
-        if p.work_days.is_empty() || p.work_days.contains(&d.weekday().number_from_monday()) {
-            break;
-        }
-    }
-    Local
-        .from_local_datetime(&d.and_time(start))
-        .earliest()
-        .map(|t| t.with_timezone(&Utc))
-        .unwrap_or_else(|| (now + Span::hours(16)).with_timezone(&Utc))
+/// Start of the next local day (for "Pause until midnight"). Tracking has no work hours:
+/// people work whenever they like.
+pub fn next_midnight(now: DateTime<Local>) -> DateTime<Utc> {
+    crate::review::day_range(now.date_naive(), 0).2
 }
 
 /// What the current window says about the work.
@@ -393,9 +374,6 @@ pub fn status(st: &AppState) -> String {
     if !policy.enabled {
         return "Waiting for the server (AI not configured)".into();
     }
-    if !in_work_hours(Local::now(), &policy) {
-        return "Outside work hours".into();
-    }
     if a.pinned_until.is_some_and(|p| p > now) {
         return "On (following your manual pick for now)".into();
     }
@@ -625,7 +603,7 @@ pub async fn monitor(app: AppHandle) {
             let _ = crate::refresh_tray(&app);
         }
         let policy = st.policy.lock().unwrap().clone();
-        if !in_work_hours(Local::now(), &policy) || paused.is_some_and(|p| p > now) {
+        if paused.is_some_and(|p| p > now) {
             engine.reset();
             ctx = None;
             continue;
@@ -797,12 +775,12 @@ pub fn learn_user(st: &AppState, fp: &str, project: &str, task: Option<&str>) {
 }
 
 /// Private time: stops the timer and suspends auto-tracking. `minutes: None` pauses
-/// until the next work day.
+/// until midnight.
 pub fn pause(app: &AppHandle, minutes: Option<i64>) {
     let st = app.state::<AppState>();
     let until = match minutes {
         Some(m) => Utc::now() + Span::minutes(m.clamp(1, 24 * 60)),
-        None => next_work_start(Local::now(), &st.policy.lock().unwrap()),
+        None => next_midnight(Local::now()),
     };
     let _ = db::stop(&mut st.db.lock().unwrap(), &crate::now());
     st.auto.lock().unwrap().paused_until = Some(until);
@@ -833,7 +811,6 @@ pub struct AutoView {
     paused: bool,
     server_ready: bool,
     capture_minutes: i64,
-    work: String,
     excluded: Vec<String>,
     keep_days: i64,
     pin_minutes: i64,
@@ -852,7 +829,6 @@ pub fn view(st: &AppState) -> AutoView {
         paused: a.paused_until.is_some_and(|t| t > Utc::now()),
         server_ready: p.enabled,
         capture_minutes: (p.capture_interval_secs / 60).max(1),
-        work: format!("{}–{}", p.work_start, p.work_end),
         excluded: p.excluded_apps.clone(),
         keep_days: p.keep_screenshots_days,
         pin_minutes: (p.pin_secs / 60).max(1),
@@ -961,6 +937,7 @@ pub fn resume_auto(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
 
     fn t(secs: i64) -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000 + secs, 0).unwrap()
@@ -1219,22 +1196,13 @@ mod tests {
     }
 
     #[test]
-    fn work_hours_and_next_start() {
-        let p = Policy::default();
-        let mon_10 = Local.with_ymd_and_hms(2026, 11, 16, 10, 0, 0).unwrap();
-        let mon_20 = Local.with_ymd_and_hms(2026, 11, 16, 20, 0, 0).unwrap();
-        let sat_10 = Local.with_ymd_and_hms(2026, 11, 21, 10, 0, 0).unwrap();
-        assert!(in_work_hours(mon_10, &p));
-        assert!(!in_work_hours(mon_20, &p));
-        assert!(!in_work_hours(sat_10, &p));
-        let fri = Local.with_ymd_and_hms(2026, 11, 20, 18, 0, 0).unwrap();
-        let next = next_work_start(fri, &p).with_timezone(&Local);
-        assert_eq!(
-            (next.weekday(), next.time()),
-            (
-                chrono::Weekday::Mon,
-                NaiveTime::from_hms_opt(9, 0, 0).unwrap()
-            )
-        );
+    fn pause_until_midnight_ends_at_the_next_local_day() {
+        // Any day and hour, including weekends and late evenings: no work hours.
+        for (d, h) in [(20, 18), (21, 10), (22, 23), (16, 0)] {
+            let now = Local.with_ymd_and_hms(2026, 11, d, h, 30, 0).unwrap();
+            let next = next_midnight(now).with_timezone(&Local);
+            assert_eq!(next.date_naive(), now.date_naive().succ_opt().unwrap());
+            assert_eq!(next.time(), NaiveTime::MIN);
+        }
     }
 }

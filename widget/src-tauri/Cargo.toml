@@ -1,6 +1,6 @@
 [package]
 name = "ira-tracker"
-version = "0.2.2"
+version = "0.2.3"
 description = "Ira Tracker tray widget"
 authors = ["Ira Technologies"]
 edition = "2024"

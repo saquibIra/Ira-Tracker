@@ -151,8 +151,8 @@ async function renderAuto() {
     const every = v.capture_minutes === 1 ? "minute" : plural(v.capture_minutes, "minute");
     document.getElementById("shots")!.textContent =
       v.keep_days > 0
-        ? `While tracking, once every ${every} during work hours (${v.work}), a small grayscale picture of the screen you are working on. It is kept only on this computer for ${plural(v.keep_days, "day")} so you can check your day in the review (you can delete any of them), then removed automatically.`
-        : `Only when the window title is not enough, at most once every ${every} during work hours (${v.work}). Screenshots are not kept.`;
+        ? `While tracking, once every ${every}, a small grayscale picture of the screen you are working on. It is kept only on this computer for ${plural(v.keep_days, "day")} so you can check your day in the review (you can delete any of them), then removed automatically.`
+        : `Only when the window title is not enough, at most once every ${every}. Screenshots are not kept.`;
     document.getElementById("pin")!.textContent = plural(v.pin_minutes, "minute");
     document.getElementById("ai")!.textContent = aiName(v.ai_provider);
     document.getElementById("excluded")!.textContent = v.excluded.length

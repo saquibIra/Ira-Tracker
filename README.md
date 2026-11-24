@@ -8,7 +8,7 @@ A lightweight time-tracking system for Ira engineers: a menu-bar/tray widget rec
 
 Design principles: *confirm, don't type*; invisible when idle; the timer follows your work automatically; fix it later in an end-of-day review.
 
-**Privacy.** Auto-tracking is opt-in, with a consent screen. It reads the front window's app and title locally. While tracking it takes a small grayscale screenshot every few minutes (work hours only). Screenshots stay on the engineer's own computer for a few days so they can check and fix their day in the review, and are then deleted. Only when the window title is not enough is a screenshot sent to the Ira service for classification; the server never stores it. No keystrokes or mouse activity are ever captured. Password managers and personal messengers are excluded, and engineers can pause it at any time for private time.
+**Privacy.** Auto-tracking is opt-in, with a consent screen. It reads the front window's app and title locally. While tracking it takes a small grayscale screenshot every few minutes. Screenshots stay on the engineer's own computer for a few days so they can check and fix their day in the review, and are then deleted. Only when the window title is not enough is a screenshot sent to the Ira service for classification; the server never stores it. No keystrokes or mouse activity are ever captured. Password managers and personal messengers are excluded, and engineers can pause it at any time for private time.
 
 ## Repository layout
 

@@ -92,7 +92,7 @@ To use Claude instead, set `IRA_AI_PROVIDER=anthropic` and `ANTHROPIC_API_KEY=�
 
 ## Settings
 
-`/opt/ira-data/ira-service.env` holds the screenshot interval (5 min), retention (3 days), work hours (Mon–Fri 09:00–19:00), the review reminder (18:30), models and thresholds. Edit it, then re-run the deploy. Widgets pick up changes within an hour.
+`/opt/ira-data/ira-service.env` holds the screenshot interval (5 min), retention (3 days), the review reminder (18:30), models and thresholds. Edit it, then re-run the deploy. Widgets pick up changes within an hour.
 
 ## Logs
 

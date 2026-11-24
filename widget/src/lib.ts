@@ -29,7 +29,6 @@ export interface AutoView {
   paused: boolean;
   server_ready: boolean;
   capture_minutes: number;
-  work: string;
   excluded: string[];
   keep_days: number;
   pin_minutes: number;

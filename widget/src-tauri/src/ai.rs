@@ -22,9 +22,7 @@ pub struct Policy {
     pub unresolved_review_secs: i64,
     pub capture_max_px: u32,
     pub capture_quality: u8,
-    pub work_days: Vec<u32>,
-    pub work_start: String,
-    pub work_end: String,
+    /// When the end-of-day review reminder appears (local time, on days with tracked time).
     pub review_at: String,
     pub excluded_apps: Vec<String>,
     /// Screenshots kept on the engineer's computer for the day review; 0 = none.
@@ -62,9 +60,6 @@ impl Default for Policy {
             unresolved_review_secs: 900,
             capture_max_px: 1568,
             capture_quality: 60,
-            work_days: vec![1, 2, 3, 4, 5],
-            work_start: "09:00".into(),
-            work_end: "19:00".into(),
             review_at: "18:30".into(),
             keep_screenshots_days: 3,
             ai_provider: String::new(),

@@ -33,7 +33,8 @@ def test_config_returns_policy(client):
     c = client.get("/v1/config", headers=h()).json()
     assert c["enabled"] is True
     assert c["capture_interval_secs"] == 300
-    assert c["work_days"] == [1, 2, 3, 4, 5]
+    # No work hours: widgets up to 0.2.2 read these and must track any day, any time.
+    assert (c["work_days"], c["work_start"], c["work_end"]) == ([1, 2, 3, 4, 5, 6, 7], "00:00", "23:59")
     assert "1Password" in c["excluded_apps"]
     assert c["keep_screenshots_days"] == 3
     # The widget names the provider on its consent screen.

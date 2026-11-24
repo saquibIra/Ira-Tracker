@@ -64,7 +64,7 @@ Production settings are in `/opt/ira-data/ira-service.env` on the VM. The templa
 **Defaults:**
 
 - **Screenshots:** one every 5 minutes while tracking, kept 3 days on each laptop.
-- **Work hours:** Mon–Fri, 09:00–19:00.
+- **Work hours:** none; people track whenever they work.
 - **Day review reminder:** 18:30.
 - **AI:** Gemini `gemini-3.5-flash-lite`, re-checked by `gemini-3.8-flash` when unsure.
 

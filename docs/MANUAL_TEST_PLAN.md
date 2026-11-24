@@ -108,7 +108,7 @@ Threshold is 30 s because of `IRA_IDLE_SECS=30` (default 10 min).
    IRA_AUTO_TICK_SECS=5 IRA_CAPTURE_SECS=30 npm run tauri dev
    ```
 
-   On the service, also set `IRA_PIN_SECS=60`, so a manual start or stop pauses auto-switching for 1 minute instead of 30. To test outside work hours, set `IRA_WORK_START=00:00` and `IRA_WORK_END=23:59`. Restart the service after changing these.
+   On the service, also set `IRA_PIN_SECS=60`, so a manual start or stop pauses auto-switching for 1 minute instead of 30. Restart the service after changing these.
 
 | # | Do this | Expect |
 |---|---------|--------|
