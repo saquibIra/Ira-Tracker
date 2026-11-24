@@ -2,7 +2,8 @@
 # Builds the Mac installer for employees and (optionally) publishes it on the server.
 #
 #   IRA_SERVER_URL=https://time.example.com scripts/release-mac.sh            # build only
-#   IRA_SERVER_URL=https://time.example.com PUBLISH=1 scripts/release-mac.sh  # build + upload
+#   IRA_SERVER_URL=https://time.example.com PUBLISH=1 scripts/release-mac.sh  # build + upload (GCP VM)
+#   IRA_SERVER_URL=... PUBLISH_HOST=ubuntu@1.2.3.4 PUBLISH_KEY=~/key.pem scripts/release-mac.sh  # Linux server
 #
 # - The server URL is baked in, so engineers only paste their API token.
 # - Signed with the "Ira Tracker Local Signing" identity from this Mac's keychain, so the
@@ -16,8 +17,15 @@ SIGNING_IDENTITY="${SIGNING_IDENTITY:-Ira Tracker Local Signing}"
 VM="${VM:-ira-tracker}"
 ZONE="${ZONE:-asia-south1-a}"
 
+# Tools: Node from nvm and Rust from rustup when they are not on PATH.
+if ! command -v npm >/dev/null && [ -d "$HOME/.nvm/versions/node" ]; then
+  PATH="$(ls -d "$HOME"/.nvm/versions/node/*/bin | sort -V | tail -1):$PATH"
+fi
+# shellcheck disable=SC1091
+command -v cargo >/dev/null || . "$HOME/.cargo/env"
+
 cd "$(dirname "$0")/../widget"
-VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json | head -1)
 OUT="$(pwd)/src-tauri/target/release-dist"
 mkdir -p "$OUT"
 
@@ -39,7 +47,13 @@ rm -rf "$STAGE"
 cp "$DMG" "$OUT/IraTracker-mac.dmg" # stable "latest" name for the download link
 echo "built $DMG"
 
-if [ "${PUBLISH:-0}" = "1" ]; then
+if [ -n "${PUBLISH_HOST:-}" ]; then
+  : "${PUBLISH_KEY:?set PUBLISH_KEY, the SSH key for PUBLISH_HOST}"
+  scp -i "$PUBLISH_KEY" -o BatchMode=yes "$DMG" "$OUT/IraTracker-mac.dmg" "$PUBLISH_HOST:/tmp/"
+  ssh -i "$PUBLISH_KEY" -o BatchMode=yes "$PUBLISH_HOST" \
+    "sudo install -m 644 /tmp/IraTracker-*.dmg /opt/ira-data/downloads/ && rm -f /tmp/IraTracker-*.dmg"
+  echo "published: $IRA_SERVER_URL/download/IraTracker-mac.dmg"
+elif [ "${PUBLISH:-0}" = "1" ]; then
   gcloud compute scp "$DMG" "$OUT/IraTracker-mac.dmg" "$VM:/tmp/" --zone "$ZONE"
   gcloud compute ssh "$VM" --zone "$ZONE" -- \
     "sudo install -m 644 /tmp/IraTracker-*.dmg /opt/ira-data/downloads/ && rm -f /tmp/IraTracker-*.dmg"

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ira Tracker – Download</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#5f6b7a; --line:#e3e6eb; --accent:#2f6fed; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#15171c; --card:#1e2128; --text:#e8eaee; --muted:#9aa1ad; --line:#2e323b; --accent:#6b9bff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  .lead { color: var(--muted); margin: 0 0 28px; }
+  .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 32px; }
+  .btn { display:inline-block; padding: 12px 18px; border-radius: 10px; background: var(--accent); color:#fff; text-decoration:none; font-weight:600; }
+  .btn.alt { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px; margin-bottom: 16px; }
+  h2 { font-size: 18px; margin: 0 0 8px; }
+  ol { margin: 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .muted { color: var(--muted); font-size: 14px; }
+  code { font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ira Tracker</h1>
+  <p class="lead">Tracks which project you work on, so you don't have to start and stop timers. Check and submit your day at the end.</p>
+
+  <div class="buttons">
+    <a class="btn" href="IraTracker-mac.dmg">Download for Mac</a>
+    <a class="btn alt" href="IraTracker-windows.exe">Download for Windows</a>
+  </div>
+
+  <div class="card">
+    <h2>1. Get your API token (once)</h2>
+    <ol>
+      <li>Sign in at <a href="https://__DOMAIN__/">https://__DOMAIN__</a> with the account your admin created.</li>
+      <li>Click your name → <b>Profile</b> → <b>API Tokens</b> → <b>Create API Token</b>, name it "Ira Tracker", and copy it.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>2. Install</h2>
+    <ol>
+      <li><b>Mac:</b> open the downloaded file and drag <b>Ira Tracker</b> into <b>Applications</b>, then open it. The first time, macOS says it can't verify the developer: go to <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>. This is needed only once.</li>
+      <li><b>Windows:</b> run the installer. If SmartScreen appears, click <b>More info → Run anyway</b>.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>3. Sign in</h2>
+    <ol>
+      <li>Paste your API token and click <b>Sign in</b>. The server address is already filled in.</li>
+      <li>Read the auto-tracking screen and click <b>I agree, turn on auto-tracking</b>.</li>
+      <li><b>Mac:</b> when asked, allow <b>Screen Recording</b> for Ira Tracker, then click <b>Quit &amp; Reopen</b>.</li>
+    </ol>
+    <p class="muted">Every day: the tray menu has <b>Review today…</b> to fix projects and times, <b>Pause</b> for private time, and the 18:30 reminder to submit your day.</p>
+  </div>
+
+  <div class="card">
+    <h2>Privacy</h2>
+    <p class="muted">While you track during work hours, a small grayscale screenshot is taken every 5 minutes. It stays <b>on your computer</b> for 3 days so you can check your day, and you can delete any of it. When the window title is not enough, the screenshot is sent to the server only to ask the AI which project it is, and the server does not keep it. Keystrokes, mouse activity, password managers and personal messengers are never captured.</p>
+  </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Installs or updates Ira Tracker on a Linux server with Docker. Run as root from the
+# copied code (deploy.sh does this for you):
+#
+#   sudo DOMAIN=time.example.com ADMIN_EMAIL=you@example.com \
+#        [GEMINI_API_KEY=...] /opt/ira-tracker/deploy/linux/install.sh
+#
+# Safe to re-run: secrets and settings in /opt/ira-data are created once and kept.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+DATA="${DATA_DIR:-/opt/ira-data}"
+log() { echo "[ira-install] $*"; }
+
+command -v docker >/dev/null || { echo "Docker is required"; exit 1; }
+docker compose version >/dev/null || { echo "Docker Compose v2 is required"; exit 1; }
+
+install -d -m 700 "$DATA"
+install -d -m 700 "$DATA/backups"
+install -d -m 755 "$DATA/downloads"
+
+# 1. Secrets and settings (first run only; never in the repository)
+if [ ! -f "$DATA/compose.env" ]; then
+  : "${DOMAIN:?set DOMAIN on the first install}"
+  : "${ADMIN_EMAIL:?set ADMIN_EMAIL on the first install}"
+  log "creating $DATA/compose.env"
+  cat >"$DATA/compose.env" <<EOF
+DOMAIN=$DOMAIN
+ACME_EMAIL=$ADMIN_EMAIL
+ADMIN_EMAIL=$ADMIN_EMAIL
+DATA_DIR=$DATA
+DB_DATABASE=solidtime
+DB_USERNAME=solidtime
+DB_PASSWORD=$(openssl rand -hex 24)
+SOLIDTIME_IMAGE_TAG=latest
+EOF
+  chmod 600 "$DATA/compose.env"
+fi
+# shellcheck disable=SC1091
+. "$DATA/compose.env"
+
+if [ ! -f "$DATA/laravel.env" ]; then
+  log "creating $DATA/laravel.env (new application keys)"
+  docker pull -q "solidtime/solidtime:${SOLIDTIME_IMAGE_TAG:-latest}" >/dev/null
+  {
+    cat <<EOF
+APP_NAME="Ira Tracker"
+VITE_APP_NAME="Ira Tracker"
+APP_ENV="production"
+APP_DEBUG="false"
+APP_URL="https://$DOMAIN"
+APP_FORCE_HTTPS="true"
+TRUSTED_PROXIES="0.0.0.0/0,2000:0:0:0:0:0:0:0/3"
+SUPER_ADMINS="$ADMIN_EMAIL"
+LOG_CHANNEL="stderr"
+LOG_LEVEL="info"
+DB_CONNECTION="pgsql"
+DB_HOST="database"
+DB_PORT="5432"
+DB_SSL_MODE="prefer"
+DB_DATABASE="$DB_DATABASE"
+DB_USERNAME="$DB_USERNAME"
+DB_PASSWORD="$DB_PASSWORD"
+MAIL_MAILER="log"
+MAIL_FROM_ADDRESS="no-reply@$DOMAIN"
+MAIL_FROM_NAME="Ira Tracker"
+QUEUE_CONNECTION="database"
+FILESYSTEM_DISK="local"
+PUBLIC_FILESYSTEM_DISK="public"
+GOTENBERG_URL="http://gotenberg:3000"
+EOF
+    docker run --rm "solidtime/solidtime:${SOLIDTIME_IMAGE_TAG:-latest}" php artisan self-host:generate-keys
+  } >"$DATA/laravel.env"
+  chmod 600 "$DATA/laravel.env"
+fi
+
+if [ ! -f "$DATA/ira-service.env" ]; then
+  log "creating $DATA/ira-service.env"
+  sed "s|__GEMINI_API_KEY__|${GEMINI_API_KEY:-}|" "$HERE/ira-service.env.template" >"$DATA/ira-service.env"
+  chmod 600 "$DATA/ira-service.env"
+elif [ -n "${GEMINI_API_KEY:-}" ]; then
+  log "updating GEMINI_API_KEY"
+  sed -i "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=${GEMINI_API_KEY}|" "$DATA/ira-service.env"
+fi
+
+cp "$HERE/downloads-index.html" "$DATA/downloads/index.html"
+sed -i "s|__DOMAIN__|$DOMAIN|g" "$DATA/downloads/index.html"
+
+# 2. Start or update
+cd "$HERE"
+compose() { docker compose --env-file "$DATA/compose.env" "$@"; }
+log "starting containers (first run downloads ~5 GB of images)"
+compose pull --quiet --ignore-buildable
+compose up -d --build --remove-orphans
+
+# 3. Database
+for _ in $(seq 1 60); do
+  compose exec -T database pg_isready -q -U "$DB_USERNAME" && break
+  sleep 2
+done
+compose exec -T scheduler php artisan migrate --force
+if [ ! -f "$DATA/.passport-client" ]; then
+  compose exec -T scheduler php artisan passport:client --personal --name="API" -n
+  touch "$DATA/.passport-client"
+fi
+if [ ! -f "$DATA/admin-credentials.txt" ]; then
+  compose exec -T scheduler php artisan admin:user:create "Ira Admin" "$ADMIN_EMAIL" --verify-email \
+    >"$DATA/admin-credentials.txt"
+  chmod 600 "$DATA/admin-credentials.txt"
+fi
+
+# 4. Nightly backup at 02:30 (kept 14 days in $DATA/backups)
+cat >/etc/cron.d/ira-tracker-backup <<EOF
+30 2 * * * root $HERE/backup.sh >>$DATA/backups/backup.log 2>&1
+EOF
+chmod 644 /etc/cron.d/ira-tracker-backup
+
+docker image prune -f >/dev/null
+log "ready: https://$DOMAIN (admin login in $DATA/admin-credentials.txt)"

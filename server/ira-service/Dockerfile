@@ -5,7 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /usr/local/bin/uv
+# uv from PyPI (some servers cannot reach ghcr.io)
+RUN pip install --no-cache-dir uv==0.12.5
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./

@@ -17,7 +17,8 @@ Design principles: *confirm, don't type*; invisible when idle; the timer follows
 ├── widget/              Tauri tray app (Ira Tracker)
 │   ├── src/             TypeScript UI (quick switcher, sign-in)
 │   └── src-tauri/       Rust core: tray, SQLite queue, sync, keychain
-├── deploy/gcp/          Production: one Google Cloud VM (Docker, HTTPS, Gemini, logs, backups)
+├── deploy/linux/        Production on any Linux server with Docker (current: client server)
+├── deploy/gcp/          Alternative: one Google Cloud VM (Docker, HTTPS, Gemini, logs, backups)
 ├── scripts/             Release scripts (Mac installer)
 ├── server/
 │   ├── solidtime/       Docker Compose for self-hosted solidtime
@@ -63,7 +64,7 @@ Developer checklist: [widget/README.md](widget/README.md). Full manual test plan
 
 Full requirement-by-requirement check: [docs/STATUS.md](docs/STATUS.md).
 
-**Production:** [docs/DEPLOY_GCP.md](docs/DEPLOY_GCP.md) covers the Google Cloud deployment, settings, logs, updates and installers. [docs/INSTALL.md](docs/INSTALL.md) is the install guide for employees.
+**Production:** [docs/DEPLOY_LINUX.md](docs/DEPLOY_LINUX.md) covers the current deployment on the client server (https://time.iratechnologies.com). [docs/DEPLOY_GCP.md](docs/DEPLOY_GCP.md) is the alternative Google Cloud setup. [docs/INSTALL.md](docs/INSTALL.md) is the install guide for employees.
 
 ## Tests
 
