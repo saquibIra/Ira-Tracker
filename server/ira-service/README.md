@@ -2,7 +2,7 @@
 
 FastAPI service next to solidtime. It does three things:
 
-1. **AI auto-tracking.** The widget sends the front window's app name and title, plus a small grayscale screenshot when needed. The AI answers which of the engineer's projects that work belongs to: **Gemini** on Vertex AI in production, or **Claude** (`IRA_AI_PROVIDER`).
+1. **AI auto-tracking.** The widget sends the front window's app name and title, plus a small grayscale screenshot when needed. The AI answers which of the engineer's projects that work belongs to: **Gemini** in production (API key or Vertex AI), or **Claude** (`IRA_AI_PROVIDER`).
 2. **Admin page** at `/admin`. Owners and admins of the solidtime organization add a description and keywords to each project (repository names, ticket prefixes such as `BILL-`, customer names, domains). They also see AI usage and cost, and who submitted their day.
 3. **Day submissions** (W8): the widget's "Submit day".
 
@@ -13,14 +13,14 @@ It never writes to solidtime, and it never stores screenshots, window titles or 
 ```bash
 cd server/ira-service
 cp .env.example .env        # git-ignored
-# edit .env: ANTHROPIC_API_KEY=sk-ant-...   SOLIDTIME_URL=http://localhost:8000
+# edit .env: GEMINI_API_KEY=...   SOLIDTIME_URL=http://localhost:8000
 uv sync
 uv run --env-file .env uvicorn --factory ira_service.main:create_app --host 127.0.0.1 --port 8010
 ```
 
 - Health check: `curl http://localhost:8010/healthz` returns `{"ok":true,"ai":true}` once the key is set.
 - Admin page: http://localhost:8010/admin. Sign in with a solidtime personal API token of an owner or admin.
-- Without `ANTHROPIC_API_KEY` the service still runs. Widgets then auto-track only from keywords and what they have learned; there are no AI calls.
+- Without an AI key the service still runs. Widgets then auto-track only from keywords and what they have learned; there are no AI calls.
 
 **Docker** (next to the solidtime stack; start solidtime first so its network exists):
 
@@ -47,11 +47,11 @@ Most of the time the widget decides locally (learned cache and keywords), so a t
 
 ## Privacy and security
 
-- **Screenshots stay in memory.** Requests over about 900 KB, or without a `Content-Length`, are rejected, so an upload can never spill to a temp file. The image is dropped as soon as Claude has answered.
+- **Screenshots stay in memory.** Requests over about 900 KB, or without a `Content-Length`, are rejected, so an upload can never spill to a temp file. The image is dropped as soon as the AI has answered.
 - **Nothing sensitive is persisted.** No table or log line contains a screenshot, window title or token. A test enforces this.
 - **Per-engineer rate limit:** 40 calls per hour by default.
 - **Admin endpoints** require the solidtime `owner` or `admin` role. The admin page has a strict Content-Security-Policy and builds the page without `innerHTML`.
-- **The Anthropic key exists only here.** Widgets never see it.
+- **The AI key (Gemini or Anthropic) exists only here.** Widgets never see it.
 
 ## Logs
 
@@ -64,10 +64,12 @@ Production log queries are in [docs/DEPLOY_GCP.md](../../docs/DEPLOY_GCP.md#3-lo
 
 ## Troubleshooting
 
-`curl http://localhost:8010/healthz` shows `ai_error` when Claude refuses the account. The same message appears on the admin page under AI usage and in the widget's auto-tracking status. Common messages:
+`curl http://localhost:8010/healthz` shows `ai_error` when the AI provider refuses the key. The same message appears on the admin page under AI usage and in the widget's auto-tracking status. Common messages:
 
-- **"Your credit balance is too low…"**: add credits in the Anthropic Console under Plans & Billing.
-- **"invalid x-api-key"**: wrong or revoked `ANTHROPIC_API_KEY`. Fix `.env` and restart the service.
+- **"API key not valid"** (Gemini): wrong or revoked `GEMINI_API_KEY`. Fix `.env` and restart the service.
+- **"RESOURCE_EXHAUSTED"** (Gemini): quota or free-tier limit reached; check billing in Google AI Studio.
+- **"Your credit balance is too low…"** (Claude): add credits in the Anthropic Console under Plans & Billing.
+- **"invalid x-api-key"** (Claude): wrong or revoked `ANTHROPIC_API_KEY`. Fix `.env` and restart the service.
 - **"model: … not found"**: the account has no access to that model. Change `IRA_AI_MODEL` or `IRA_AI_ESCALATION_MODEL`.
 
 After such an error the service pauses AI calls for 10 minutes instead of failing every widget's request. Restart the service to retry at once. Meanwhile widgets keep tracking with keywords and what they have learned.
