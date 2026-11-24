@@ -614,32 +614,12 @@ fn sign_out(app: AppHandle) -> Result<(), String> {
                 "{pending} entries not synced yet; connect to the server first"
             ));
         }
-        // Consent and everything learned about this person's windows go with them.
-        db::forget_all(&db).map_err(|e| e.to_string())?;
-        for k in [
-            "base_url",
-            "org_id",
-            "member_id",
-            "catalog",
-            "auto_enabled",
-            "consent_version",
-            "paused_until",
-            "ai_hints",
-            "ai_hints_etag",
-            "nudged",
-        ] {
-            let _ = db::kv_del(&db, k);
-        }
-        let _ = db.execute("DELETE FROM kv WHERE k LIKE 'submitted:%'", []);
+        // Consent, everything learned about this person's windows and the server's
+        // Ira service go with them (signing in elsewhere must not use the old service).
+        db::forget_account(&db).map_err(|e| e.to_string())?;
     }
-    {
-        let mut a = st.auto.lock().unwrap();
-        let service = a.service.take();
-        *a = auto::AutoState {
-            service,
-            ..Default::default()
-        };
-    }
+    *st.auto.lock().unwrap() = auto::AutoState::default();
+    *st.policy.lock().unwrap() = ai::Policy::default();
     *st.hints.lock().unwrap() = Vec::new();
     shots::delete_all(&st);
     if let Ok(k) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {

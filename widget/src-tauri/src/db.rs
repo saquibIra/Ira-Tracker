@@ -578,6 +578,36 @@ pub fn forget_all(c: &Connection) -> rusqlite::Result<()> {
     c.execute_batch("DELETE FROM entry; DELETE FROM context_cache; DELETE FROM capture;")
 }
 
+/// Settings that belong to the signed-in account and its server. The Ira service
+/// address and its policy are part of the server: signing in somewhere else must
+/// not keep talking to the old service.
+pub const ACCOUNT_KEYS: &[&str] = &[
+    "base_url",
+    "org_id",
+    "member_id",
+    "catalog",
+    "auto_enabled",
+    "consent_version",
+    "paused_until",
+    "ai_url",
+    "ai_policy",
+    "ai_hints",
+    "ai_hints_etag",
+    "nudged",
+];
+
+/// Sign-out, in one transaction: entries, learned windows, screenshot records and the
+/// account's settings (incl. which days were submitted).
+pub fn forget_account(c: &Connection) -> rusqlite::Result<()> {
+    let tx = c.unchecked_transaction()?;
+    forget_all(&tx)?;
+    for k in ACCOUNT_KEYS {
+        kv_del(&tx, k)?;
+    }
+    tx.execute("DELETE FROM kv WHERE k LIKE 'submitted:%'", [])?;
+    tx.commit()
+}
+
 // ---------- editing times (W8 review) ----------
 
 fn other_overlaps(
@@ -1357,6 +1387,37 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM context_cache", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn sign_out_forgets_the_server_and_its_ira_service() {
+        let mut c = mem();
+        for k in ACCOUNT_KEYS {
+            kv_set(&c, k, "x").unwrap();
+        }
+        // Explicitly: a test server's service must not survive a switch to production.
+        kv_set(&c, "ai_url", "http://localhost:8010").unwrap();
+        kv_set(&c, "ai_policy", "{}").unwrap();
+        kv_set(&c, "submitted:2026-11-24", "1").unwrap();
+        kv_set(&c, "unrelated", "keep").unwrap();
+        super::start(
+            &mut c,
+            &NewEntry::manual("p1", None, "", false),
+            "2026-11-24T09:00:00Z",
+        )
+        .unwrap();
+        assert_eq!(pending_count(&c), 1);
+
+        forget_account(&c).unwrap();
+
+        for k in ACCOUNT_KEYS {
+            assert_eq!(kv_get(&c, k), None, "{k} survived sign-out");
+        }
+        assert_eq!(kv_get(&c, "ai_url"), None);
+        assert_eq!(kv_get(&c, "ai_policy"), None);
+        assert_eq!(kv_get(&c, "submitted:2026-11-24"), None);
+        assert_eq!(kv_get(&c, "unrelated").as_deref(), Some("keep"));
+        assert_eq!(pending_count(&c), 0);
     }
 }
 
