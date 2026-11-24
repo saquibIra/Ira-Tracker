@@ -1,52 +1,38 @@
-# Example: Docker + Database
+# Local stack
 
-This example shows how to run solidtime with Docker and with a database inside the same docker compose.
+The Time Pilot web platform (built from `../web`), Postgres, Mailpit and the Autotrack service, for development and the end-to-end test.
 
-## Prerequisites
+| Address | What |
+|---|---|
+| http://localhost:8000 | web platform (Super Admin panel at `/admin`) |
+| http://localhost:8025 | Mailpit: every email the platform sends |
+| http://localhost:8010 | Autotrack service (settings page at `/admin/`) |
 
-- [Docker](https://docs.docker.com/engine/install/)
-- A reverse proxy like Nginx or Traefik OR you can use the solidtime image without a reverse proxy for local setups.
-
-The reverse proxy can be installed with or without Docker.
-The example only exposes the solidtime application on a port defined by a configuration.
-
-## Installation
-
-1. Copy the example files and adjust the environment variables to your needs
+## First run
 
 ```bash
-cp laravel.env.example laravel.env
-cp .env.example .env
+cd server/local
+cp .env.example .env                       # database name, user, password
+cp laravel.env.example laravel.env         # web settings (email goes to Mailpit)
+docker run --rm solidtime/solidtime:0.23.0 php artisan self-host:generate-keys >> laravel.env
+cp ../autotrack/.env.example ../autotrack/.env   # add GEMINI_API_KEY for live AI (optional)
+
+docker compose up -d --build
+docker compose exec app php artisan migrate --force
+docker compose exec app php artisan passport:client --personal --name=API -n
+docker compose exec app php artisan admin:user:create "Time Pilot Admin" superadmin@timepilot.local --verify-email
+docker compose exec app php artisan timepilot:oauth-clients --admin-redirect=http://localhost:8010/admin/
 ```
 
-2. (Only with Linux/Docker Engine) Correct the permissions of the `app-storage` and `logs` directories.
+The last command prints `{"desktop": "...", "admin": "..."}`. Put both ids in `laravel.env` as `TIMEPILOT_FIRST_PARTY_CLIENTS="<desktop>,<admin>"`, and in `../autotrack/.env` as `TIMEPILOT_DESKTOP_CLIENT_ID`, `TIMEPILOT_ADMIN_CLIENT_ID` and `TIMEPILOT_PUBLIC_URL=http://localhost:8000`. Then `docker compose up -d` again.
+
+Sign in at http://localhost:8000 as the Super Admin (password printed by `admin:user:create`) and create an organization under `/admin` → Organizations → **New organization**. Its emails, with their links, appear in Mailpit.
+
+`TRUSTED_HOSTS="app"` (in `laravel.env.example`) lets the Autotrack container call the web platform by its Docker name.
+
+## End-to-end test
 
 ```bash
-chown -R 1000:1000 app-storage logs
-```
-
-Follow further instructions on [Self-Hosting Docs](https://docs.solidtime.io/self-hosting/guides/docker)
-
-
-## Database access on the host machine
-
-If you want to be able to access the database from the host machine, you need to expose the database port in the `docker-compose.yml` file.
-
-> [!CAUTION]
-> Only do this if you are not exposing this port to the internet. You can block this for example via a security group in most cloud providers or via a firewall on your local machine.
-
-Uncomment the following lines in the `docker-compose.yml` file:
-
-```yaml
-  database:
-    # ... other configuration
-    ports:
-      - '${FORWARD_DB_PORT:-5432}:5432'
-    # ... other configuration
-```
-
-Set the `FORWARD_DB_PORT` environment variable to the port you want to use on the host machine
-
-```dotenv
-FORWARD_DB_PORT=5432
+cd tests/e2e && npm ci && npx playwright install chromium
+TP_SUPERADMIN_EMAIL=superadmin@timepilot.local TP_SUPERADMIN_PASSWORD=... npx playwright test
 ```

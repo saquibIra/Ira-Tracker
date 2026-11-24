@@ -44,6 +44,14 @@ const patches = [
         why: 'dark surfaces tinted navy',
     },
 
+    {
+        // The product name comes from APP_NAME (emails, page titles), not a fixed "solidtime".
+        file: 'config/app.php',
+        find: "    'name' => 'solidtime',",
+        replace: "    'name' => env('APP_NAME', 'Time Pilot'),",
+        why: 'app name from APP_NAME',
+    },
+
     // ---- page shell: browser and OS colours ------------------------------------------
     {
         file: 'resources/views/app.blade.php',
@@ -168,7 +176,7 @@ const patches = [
     {
         file: 'app/Providers/Filament/AdminPanelProvider.php',
         find: "'primary' => Color::Amber,",
-        replace: "'primary' => Color::Teal,",
+        replace: "'primary' => Color::hex('#0D9488'),",
         why: 'admin panel colour',
     },
     {

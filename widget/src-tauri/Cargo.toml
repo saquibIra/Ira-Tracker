@@ -1,6 +1,6 @@
 [package]
 name = "time-pilot"
-version = "0.2.3"
+version = "0.3.0"
 description = "Time Pilot tray widget"
 authors = ["Time Pilot"]
 edition = "2024"

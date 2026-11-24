@@ -10,21 +10,25 @@
 		reverse_proxy autotrack:8010
 	}
 
-	# Installers and update manifests for employees.
+	# Desktop app installers and the download page (no directory listing).
 	handle_path /download/* {
 		root * /srv/downloads
-		file_server browse
+		file_server
 	}
 
-	# solidtime (web app and API).
+	# Time Pilot web app and API.
 	handle {
 		reverse_proxy app:8000
 	}
 
 	header {
-		Strict-Transport-Security "max-age=31536000"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		-Server
+		-X-Powered-By
 	}
 
 	log {

@@ -1,11 +1,14 @@
-# Production stack on any Linux server with Docker (see docs/DEPLOY_LINUX.md).
+# Time Pilot production stack on any Linux server with Docker (see docs/DEPLOY_LINUX.md).
 #
-#   https://$DOMAIN/            solidtime (web app + API for the widget)
-#   https://$DOMAIN/autotrack/...     Autotrack service (AI auto-tracking, admin page at /autotrack/admin/)
-#   https://$DOMAIN/download/   installers for employees
+#   https://$DOMAIN/              web app (the solidtime fork in server/web) and its API
+#   https://$DOMAIN/admin/        Super Admin panel
+#   https://$DOMAIN/autotrack/    Autotrack service (AI auto-tracking; settings page at /autotrack/admin/)
+#   https://$DOMAIN/download/     desktop app installers
 #
 # Secrets and settings live outside the code in $DATA_DIR (default /opt/timepilot-data),
 # created by install.sh. Logs: `docker compose logs`, rotated (10 MB x 5 per container).
+
+name: timepilot
 
 x-logging: &logging
   driver: json-file
@@ -13,8 +16,10 @@ x-logging: &logging
     max-size: "10m"
     max-file: "5"
 
-x-solidtime: &solidtime
-  image: "solidtime/solidtime:${SOLIDTIME_IMAGE_TAG:-latest}"
+x-web: &web
+  # Built on the server from server/web (solidtime + Time Pilot changes).
+  image: time-pilot/web:latest
+  build: ../../server/web
   restart: always
   user: "1000:1000"
   env_file: ["${DATA_DIR:-/opt/timepilot-data}/laravel.env"]
@@ -41,21 +46,21 @@ services:
     logging: *logging
 
   app:
-    <<: *solidtime
+    <<: *web
     environment:
       CONTAINER_MODE: http
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8000/health-check/up"]
 
   scheduler:
-    <<: *solidtime
+    <<: *web
     environment:
       CONTAINER_MODE: scheduler
     healthcheck:
       test: ["CMD", "healthcheck"]
 
   queue:
-    <<: *solidtime
+    <<: *web
     environment:
       CONTAINER_MODE: worker
       WORKER_COMMAND: "php /var/www/html/artisan queue:work"

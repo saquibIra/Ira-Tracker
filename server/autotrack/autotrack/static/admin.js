@@ -194,6 +194,12 @@ function renderProjects() {
         el("td", {}, [save, status]),
       ]);
     });
+  if (!rows.length) {
+    const text = projects.length
+      ? "No projects match the filter."
+      : "No projects yet. Create them on the Projects page of Time Pilot; they appear here to add keywords.";
+    rows.push(el("tr", {}, [el("td", { class: "empty", colSpan: 4, text })]));
+  }
   $("projects").replaceChildren(...rows);
 }
 

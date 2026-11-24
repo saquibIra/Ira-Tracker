@@ -1,43 +1,43 @@
-# Time Pilot (widget) — dev testing guide
+# Time Pilot desktop app — development guide
 
-## 1. Start the server (solidtime)
+## 1. Start the platform
 
 ```bash
-cd ~/Desktop/ira_tracker/server/solidtime
+cd server/local
 docker compose up -d
 ```
 
-Check http://localhost:8000 loads. Login and API token are in `server/solidtime/.admin-credentials`.
+Check http://localhost:8000 loads. First run, Super Admin and sign-in clients: [server/local/readme.md](../server/local/readme.md). Create a test organization and an engineer through invitations (emails appear in Mailpit, http://localhost:8025), or run the end-to-end test.
 
-## 2. Start the widget in dev mode
+## 2. Start the app in dev mode
 
 ```bash
-cd ~/Desktop/ira_tracker/widget
+cd widget
 npm run tauri dev
 ```
 
-The first run compiles for a few minutes; later runs take seconds. Keep this terminal open: the widget runs as long as it does, and logs appear here. `Ctrl+C` stops it.
+The first run compiles for a few minutes; later runs take seconds. Keep this terminal open: the app runs as long as it does, and logs appear here. `Ctrl+C` stops it.
 
-The widget has no main window and no Dock icon. It lives in the **menu bar** (top right). If you can't see it, the menu bar is probably full and it is hidden behind the notch.
+The app has no main window and no Dock icon. It lives in the **menu bar** (top right). If you can't see it, the menu bar is probably full and it is hidden behind the notch.
 
 ## 3. Sign in (first run only)
 
-A sign-in window opens. Paste the API token from `.admin-credentials` and click **Sign in**. The window closes on success. If macOS asks to access the keychain, click **Always Allow** (it asks again after code changes in dev mode).
+The welcome window opens. Click **Sign in**: your default browser opens the local sign-in page (http://localhost:8000). Sign in as the engineer and go back to the app; the window closes and the auto-tracking screen opens. If macOS asks to access the keychain, click **Always Allow** (it asks again after code changes in dev mode).
 
 ## 4. Test checklist
 
 | # | Do this | Expect |
 |---|---------|--------|
 | 1 | Press **⌘⇧T** | Quick switcher opens with Recent and All projects |
-| 2 | Type `pos back`, press **Enter** | Switcher closes; tray icon turns green; hovering it shows `POS Revamp — 0:00` |
-| 3 | Refresh solidtime in the browser | Running timer on Acme – POS Revamp · Backend within ~5 s |
-| 4 | ⌘⇧T, click the description under the running timer, type text, **Enter** | Description appears in solidtime |
-| 5 | ⌘⇧T, pick another project, **Tab**, type a description, **Enter** | First entry stops, second starts; both in solidtime, no overlap |
+| 2 | Type `pos back`, press **Enter** | Switcher closes; tray icon turns teal; hovering it shows `POS Revamp — 0:00` |
+| 3 | Refresh the platform in the browser | Running timer on Acme – POS Revamp · Backend within ~5 s |
+| 4 | ⌘⇧T, click the description under the running timer, type text, **Enter** | Description appears on the platform |
+| 5 | ⌘⇧T, pick another project, **Tab**, type a description, **Enter** | First entry stops, second starts; both on the platform, no overlap |
 | 6 | Click the menu bar icon | Menu shows status, Stop, your recent projects |
 | 7 | Click a recent project in the menu | Timer switches to it |
-| 8 | Menu → **Stop timer** | Tray icon turns grey; entry ends in solidtime |
-| 9 | **Offline:** `docker compose stop app` (in `server/solidtime`), switch projects 2–3 times | Switching still instant; tooltip says "Offline · N waiting to sync" |
-| 10 | `docker compose start app`, wait ~1 min | All offline entries appear in solidtime, no duplicates |
+| 8 | Menu → **Stop timer** | Tray icon turns grey; entry ends on the platform |
+| 9 | **Offline:** `docker compose stop app` (in `server/local`), switch projects 2–3 times | Switching still instant; tooltip says "Offline · N waiting to sync" |
+| 10 | `docker compose start app`, wait ~1 min | All offline entries appear on the platform, no duplicates |
 | 11 | Quit (menu → Quit), run `npm run tauri dev` again | Still signed in; running timer and recent list intact |
 | 12 | Hover the tray icon | Tooltip shows project short name and elapsed time; icon is green while running, grey when stopped |
 
@@ -63,15 +63,15 @@ Note: the prompt only appears for periods longer than the threshold, and only wh
 ## 5. Useful commands
 
 ```bash
-# Local queue (what the widget has stored / not yet synced)
+# Local queue (what the app has stored / not yet synced)
 sqlite3 ~/Library/Application\ Support/com.timepilot.desktop/tracker.db \
   "select project_id, description, start, end, dirty, error from entry order by start desc limit 10;"
 
-# Reset the widget completely (sign-out + clear local data)
+# Reset the app completely (sign-out + clear local data)
 rm -rf ~/Library/Application\ Support/com.timepilot.desktop
-security delete-generic-password -s com.timepilot.desktop -a solidtime-token
+security delete-generic-password -s com.timepilot.desktop -a session
 
-# Re-seed demo customers/projects (safe to repeat)
+# Seed demo customers/projects into an organization (personal access token from Profile → API Tokens)
 SOLIDTIME_TOKEN=<token> python3 ../server/seed/seed_demo.py
 ```
 
@@ -100,7 +100,7 @@ The signing identity is a self-signed certificate in this Mac's login keychain (
 
 1. Start the Autotrack service (needs `ANTHROPIC_API_KEY` in `server/autotrack/.env`):
    ```bash
-   cd ~/Desktop/ira_tracker/server/autotrack
+   cd server/autotrack
    uv run --env-file .env uvicorn --factory autotrack.main:create_app --port 8010
    ```
 2. Start the widget with fast timings (a window check every 5 s, an AI call at most every 30 s):

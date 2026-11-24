@@ -12,10 +12,10 @@ dist/
 target/
 
 # Local runtime data
-server/solidtime/logs/*
-!server/solidtime/logs/.gitkeep
-server/solidtime/app-storage/*
-!server/solidtime/app-storage/.gitkeep
+server/local/logs/*
+!server/local/logs/.gitkeep
+server/local/app-storage/*
+!server/local/app-storage/.gitkeep
 *.db
 *.db-wal
 *.db-shm

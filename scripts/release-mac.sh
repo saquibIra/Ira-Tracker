@@ -2,7 +2,6 @@
 # Builds the Mac installer for employees and (optionally) publishes it on the server.
 #
 #   TIMEPILOT_SERVER_URL=https://time.example.com scripts/release-mac.sh            # build only
-#   TIMEPILOT_SERVER_URL=https://time.example.com PUBLISH=1 scripts/release-mac.sh  # build + upload (GCP VM)
 #   TIMEPILOT_SERVER_URL=... PUBLISH_HOST=ubuntu@1.2.3.4 PUBLISH_KEY=~/key.pem scripts/release-mac.sh  # Linux server
 #
 # - The server URL is baked in, so engineers only paste their API token.
@@ -14,8 +13,6 @@ set -euo pipefail
 
 : "${TIMEPILOT_SERVER_URL:?set TIMEPILOT_SERVER_URL, e.g. https://time.example.com}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Ira Tracker Local Signing}"
-VM="${VM:-time-pilot}"
-ZONE="${ZONE:-asia-south1-a}"
 
 # Tools: Node from nvm and Rust from rustup when they are not on PATH.
 if ! command -v npm >/dev/null && [ -d "$HOME/.nvm/versions/node" ]; then
@@ -52,11 +49,6 @@ if [ -n "${PUBLISH_HOST:-}" ]; then
   # Only the linked "latest" file goes up; older versions are not kept on the server.
   scp -i "$PUBLISH_KEY" -o BatchMode=yes "$OUT/TimePilot-mac.dmg" "$PUBLISH_HOST:/tmp/"
   ssh -i "$PUBLISH_KEY" -o BatchMode=yes "$PUBLISH_HOST" \
-    "sudo install -m 644 /tmp/TimePilot-mac.dmg /opt/timepilot-data/downloads/ && rm -f /tmp/TimePilot-mac.dmg"
-  echo "published: $TIMEPILOT_SERVER_URL/download/TimePilot-mac.dmg"
-elif [ "${PUBLISH:-0}" = "1" ]; then
-  gcloud compute scp "$OUT/TimePilot-mac.dmg" "$VM:/tmp/" --zone "$ZONE"
-  gcloud compute ssh "$VM" --zone "$ZONE" -- \
     "sudo install -m 644 /tmp/TimePilot-mac.dmg /opt/timepilot-data/downloads/ && rm -f /tmp/TimePilot-mac.dmg"
   echo "published: $TIMEPILOT_SERVER_URL/download/TimePilot-mac.dmg"
 fi

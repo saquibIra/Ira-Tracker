@@ -1,78 +1,10 @@
-# Server: solidtime (local development)
+# Server
 
-solidtime is the system of record (clients, projects, tasks, members, rates, time entries). We run it unmodified in Docker and talk to it only through its REST API.
+| Folder | What |
+|---|---|
+| [web/](web/README.md) | Time Pilot web platform (solidtime fork, AGPL-3.0) |
+| [autotrack/](autotrack/README.md) | AI auto-tracking service and settings page |
+| [local/](local/readme.md) | Local stack for development and the end-to-end test |
+| `seed/` | Demo data loader (`python3 seed/seed_demo.py --help`) |
 
-Based on solidtime's official example `1-docker-with-database` (see `solidtime/readme.md`).
-
-## First-time setup
-
-```bash
-cd server/solidtime
-cp .env.example .env
-cp laravel.env.example laravel.env
-```
-
-Edit the two files for local HTTP use:
-
-| File | Setting | Local value |
-|------|---------|-------------|
-| `.env` | `APP_DOMAIN` | `localhost` |
-| `.env` | `FORWARD_APP_PORT` | `127.0.0.1:8000` (only this machine can reach the server) |
-| `.env` and `laravel.env` | `DB_PASSWORD` | the same random string in both (`openssl rand -hex 16`) |
-| `laravel.env` | `APP_URL` | `"http://localhost:8000"` |
-| `laravel.env` | `APP_FORCE_HTTPS` | `"false"` |
-| `laravel.env` | `MAIL_MAILER` | `"log"` (no SMTP locally) |
-| `laravel.env` | `APP_ENV` | keep `"production"` — `local` crashes (dev-only packages are not in the image) |
-
-Generate keys and paste the three printed values (`APP_KEY`, `PASSPORT_PRIVATE_KEY`, `PASSPORT_PUBLIC_KEY`) into `laravel.env`:
-
-```bash
-docker compose run --rm scheduler php artisan self-host:generate-keys
-```
-
-Start, migrate, and create the OAuth client used for personal API tokens:
-
-```bash
-docker compose up -d
-docker compose exec scheduler php artisan migrate --force
-docker compose exec scheduler php artisan passport:client --personal --name="API" -n
-```
-
-Create your user (prints a random password) and make it super admin:
-
-```bash
-docker compose exec scheduler php artisan admin:user:create "Your Name" "you@iratechnologies.com" --verify-email
-# then in laravel.env: SUPER_ADMINS="you@iratechnologies.com"
-docker compose up -d --force-recreate
-```
-
-Open http://localhost:8000, log in, and create an API token under **Profile → API Tokens**.
-
-## Phase 0 pilot: official solidtime desktop app
-
-The requirements doc starts with a one-week pilot using the official solidtime desktop app. It signs in through OAuth, which needs a public client (run once, then enter the printed client id in the desktop app's settings):
-
-```bash
-docker compose exec scheduler php artisan passport:client --name=desktop --redirect_uri=solidtime://oauth/callback --public -n
-```
-
-## Demo data
-
-Creates 3 demo customers, 5 billable projects with tasks, and the internal projects (Internal, Pre-sales, Learning, Bench). Safe to re-run.
-
-```bash
-SOLIDTIME_TOKEN=<your token> python3 server/seed/seed_demo.py
-```
-
-## Everyday commands
-
-```bash
-docker compose up -d          # start
-docker compose stop           # stop (data kept)
-docker compose logs -f app    # logs
-docker compose stop app       # simulate "server offline" for widget testing
-```
-
-## Secrets
-
-`.env`, `laravel.env` and `.admin-credentials` contain secrets and are git-ignored. Never commit them.
+Production setup: [docs/DEPLOY_LINUX.md](../docs/DEPLOY_LINUX.md).

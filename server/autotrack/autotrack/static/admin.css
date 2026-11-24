@@ -4,18 +4,20 @@
   --text: #1d2330;
   --muted: #6b7280;
   --line: #e3e6eb;
-  --accent: #2f6fed;
+  --accent: #0d9488;
+  --on-accent: #ffffff;
   --error: #c62828;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #15171c;
-    --card: #1e2128;
-    --text: #e8eaee;
-    --muted: #9aa1ad;
-    --line: #2e323b;
-    --accent: #6b9bff;
+    --bg: #0f1720;
+    --card: #16202b;
+    --text: #e6edf3;
+    --muted: #93a1b2;
+    --line: #243142;
+    --accent: #2dd4bf;
+    --on-accent: #062925;
     --error: #ff7b7b;
   }
 }
@@ -28,12 +30,14 @@ body {
 }
 header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--line);
 }
-h1 { font-size: 18px; margin: 0; }
+h1 { font-size: 18px; margin: 0; display: flex; align-items: center; gap: 10px; }
+h1 img { width: 28px; height: 28px; }
+.empty { color: var(--muted); padding: 18px 4px; }
 h2 { font-size: 16px; margin: 0 0 8px; }
 main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 .card {
@@ -63,7 +67,7 @@ button {
   font: inherit;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-radius: 6px;
   padding: 6px 14px;
   cursor: pointer;
@@ -72,7 +76,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 button.link { background: none; border: none; color: var(--accent); padding: 0; margin-left: auto; }
 nav { display: flex; gap: 8px; margin-bottom: 12px; }
 .tab { background: transparent; color: var(--text); border-color: var(--line); }
-.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tab.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .filter { max-width: 320px; margin: 8px 0 12px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }

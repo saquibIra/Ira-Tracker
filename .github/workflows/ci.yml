@@ -86,3 +86,17 @@ jobs:
         run: uv run pytest -q
       - name: Dependency audit
         run: uv run pip-audit
+
+  web:
+    # The Time Pilot web app (solidtime fork): every patch must still match upstream, the
+    # frontend must type-check and build, and the Time Pilot PHP must parse.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t time-pilot/web:ci server/web
+      - name: PHP syntax
+        run: |
+          files=$(cd server/web/overlay && find . -name '*.php' | sed 's|^\./||')
+          docker run --rm --entrypoint sh time-pilot/web:ci -c \
+            "cd /var/www/html && for f in $(echo $files); do php -l \$f || exit 1; done"

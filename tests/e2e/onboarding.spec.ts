@@ -233,3 +233,26 @@ test('desktop tokens: exchange, short lifetime, refresh, API and Autotrack acces
     });
     expect(again.status()).toBe(200);
 });
+
+test('the admin signs in to the auto-tracking settings through the browser', async ({ browser }) => {
+    test.skip(!adminState, 'needs the admin');
+    const ctx = await browser.newContext({ storageState: adminState });
+    const page = await ctx.newPage();
+    await page.goto(`${AUTOTRACK}/admin/`);
+    await page.getByRole('button', { name: 'Sign in with Time Pilot' }).click();
+    // Back from the sign-in page: the code is gone from the address bar, the projects show.
+    await expect(page.getByRole('heading', { name: 'Project hints' })).toBeVisible();
+    expect(page.url()).not.toContain('code=');
+    await expect(page.getByText(PROJECT)).toBeVisible();
+    await ctx.close();
+});
+
+test('an employee cannot open the auto-tracking settings', async ({ browser }) => {
+    test.skip(!employeeState, 'needs the employee');
+    const ctx = await browser.newContext({ storageState: employeeState });
+    const page = await ctx.newPage();
+    await page.goto(`${AUTOTRACK}/admin/`);
+    await page.getByRole('button', { name: 'Sign in with Time Pilot' }).click();
+    await expect(page.getByText('You are not an owner or admin of any organization.')).toBeVisible();
+    await ctx.close();
+});

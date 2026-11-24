@@ -3,66 +3,81 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Time Pilot – Download</title>
+<title>Download Time Pilot</title>
+<link rel="icon" href="/favicons/favicon-32x32.png">
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#5f6b7a; --line:#e3e6eb; --accent:#2f6fed; color-scheme: light dark; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#15171c; --card:#1e2128; --text:#e8eaee; --muted:#9aa1ad; --line:#2e323b; --accent:#6b9bff; } }
+  :root { --bg:#f7f9f9; --card:#fff; --text:#0f172a; --muted:#5b6676; --line:#e2e8ee; --accent:#0d9488; --on-accent:#fff; --hero:#0b1a2b; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1720; --card:#16202b; --text:#e6edf3; --muted:#93a1b2; --line:#243142; --accent:#2dd4bf; --on-accent:#062925; } }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
-  h1 { font-size: 30px; margin: 0 0 6px; }
-  .lead { color: var(--muted); margin: 0 0 28px; }
-  .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 32px; }
-  .btn { display:inline-block; padding: 12px 18px; border-radius: 10px; background: var(--accent); color:#fff; text-decoration:none; font-weight:600; }
-  .btn.alt { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px; margin-bottom: 16px; }
-  h2 { font-size: 18px; margin: 0 0 8px; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif; }
+  .hero { background: radial-gradient(circle at 85% 15%, rgba(45,212,191,.22), transparent 45%), var(--hero); color:#fff; }
+  .wrap { max-width: 820px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .hero .wrap { padding-block: 48px 40px; }
+  .brand { display:flex; align-items:center; gap:12px; font-size:20px; font-weight:650; letter-spacing:-.01em; }
+  .brand img { width:40px; height:40px; }
+  h1 { font-size: clamp(28px, 5vw, 40px); line-height:1.15; margin: 28px 0 10px; letter-spacing:-.02em; text-wrap: balance; }
+  .lead { color: rgba(255,255,255,.75); margin: 0 0 28px; max-width: 60ch; }
+  .buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn { display:inline-block; padding: 12px 20px; border-radius: 10px; background: #2dd4bf; color:#062925; text-decoration:none; font-weight:650; }
+  .btn.alt { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.4); }
+  .btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  main.wrap { padding-block: 32px 64px; display:grid; gap:16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 24px; }
+  h2 { font-size: 18px; margin: 0 0 10px; }
   ol { margin: 0; padding-left: 20px; }
-  li { margin: 4px 0; }
-  .muted { color: var(--muted); font-size: 14px; }
-  code { font-size: 14px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+  footer { color: var(--muted); font-size: 13px; padding-bottom: 32px; }
 </style>
 </head>
 <body>
-<main>
-  <h1>Time Pilot</h1>
-  <p class="lead">Tracks which project you work on, so you don't have to start and stop timers. Check and submit your day at the end.</p>
-
-  <div class="buttons">
-    <a class="btn" href="TimePilot-mac.dmg">Download for Mac</a>
-    <a class="btn alt" href="TimePilot-windows.exe">Download for Windows</a>
+<header class="hero">
+  <div class="wrap">
+    <div class="brand"><img src="/images/timepilot-mark.svg" alt="">Time Pilot</div>
+    <h1>Your time, tracked to the right project. Automatically.</h1>
+    <p class="lead">The Time Pilot desktop app recognises which project you work on, so you don't start and stop timers. At the end of the day you check your time and submit it.</p>
+    <div class="buttons">
+      <a class="btn" href="TimePilot-mac.dmg">Download for Mac</a>
+      <a class="btn alt" href="TimePilot-windows.exe">Download for Windows</a>
+    </div>
   </div>
+</header>
 
-  <div class="card">
-    <h2>1. Get your API token (once)</h2>
+<main class="wrap">
+  <section class="card">
+    <h2>1. Join your organization</h2>
     <ol>
-      <li>Create your account at <a href="https://__DOMAIN__/register">https://__DOMAIN__/register</a>. If it asks you to confirm your email, wait 15 seconds and reload the page (no email is sent). Already have a login from your admin? <a href="https://__DOMAIN__/">Sign in</a> instead.</li>
-      <li>Click your name → <b>Profile</b> → <b>API Tokens</b> → <b>Create API Token</b>, name it "Time Pilot", and copy it.</li>
+      <li>Open the invitation email from Time Pilot and click <b>Accept invitation</b>.</li>
+      <li>Choose your password. That's your Time Pilot account.</li>
     </ol>
-  </div>
+    <p class="muted">No invitation? Ask your organization's admin. Already have an account? <a href="https://__DOMAIN__/">Sign in</a>.</p>
+  </section>
 
-  <div class="card">
-    <h2>2. Install</h2>
+  <section class="card">
+    <h2>2. Install the desktop app</h2>
     <ol>
-      <li><b>Mac:</b> open the downloaded file and drag <b>Time Pilot</b> into <b>Applications</b>, then open it. The first time, macOS says it can't verify the developer: go to <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>. This is needed only once.</li>
+      <li><b>Mac:</b> open the downloaded file and drag <b>Time Pilot</b> into <b>Applications</b>, then open it. The first time, macOS may say it can't verify the developer: open <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>.</li>
       <li><b>Windows:</b> run the installer. If SmartScreen appears, click <b>More info → Run anyway</b>.</li>
     </ol>
-  </div>
+  </section>
 
-  <div class="card">
+  <section class="card">
     <h2>3. Sign in</h2>
     <ol>
-      <li>Paste your API token and click <b>Sign in</b>. The server address is already filled in.</li>
+      <li>Click <b>Sign in</b>. Your browser opens; sign in there and come back to the app.</li>
       <li>Read the auto-tracking screen and click <b>I agree, turn on auto-tracking</b>.</li>
-      <li><b>Mac:</b> when asked, allow <b>Screen Recording</b> for Time Pilot, then click <b>Quit &amp; Reopen</b>.</li>
+      <li><b>Mac:</b> allow <b>Screen Recording</b> for Time Pilot when asked, then click <b>Quit &amp; Reopen</b>.</li>
     </ol>
-    <p class="muted">Every day: the tray menu has <b>Review today…</b> to fix projects and times, <b>Pause</b> for private time, and the 18:30 reminder to submit your day.</p>
-  </div>
+    <p class="muted">Every day: the menu bar or tray icon has <b>Review today…</b> to fix projects and times, <b>Pause</b> for private time, and an evening reminder to submit your day.</p>
+  </section>
 
-  <div class="card">
+  <section class="card">
     <h2>Privacy</h2>
-    <p class="muted">While you track, a small grayscale screenshot is taken every 5 minutes. It stays <b>on your computer</b> for 3 days so you can check your day, and you can delete any of it. When the window title is not enough, the screenshot is sent to the server only to ask the AI which project it is, and the server does not keep it. Keystrokes, mouse activity, password managers and personal messengers are never captured.</p>
-  </div>
+    <p>While you track, a small grayscale screenshot is taken every few minutes. It stays <b>on your computer</b> for a few days so you can check your day, and you can delete any of them. Only when the window title is not enough is a screenshot sent to the server, to ask the AI which project it is; the server does not keep it. Keystrokes, mouse activity, password managers and personal messengers are never captured.</p>
+  </section>
+
+  <footer>Time Pilot · <a href="https://__DOMAIN__/source">Source code</a></footer>
 </main>
 </body>
 </html>
