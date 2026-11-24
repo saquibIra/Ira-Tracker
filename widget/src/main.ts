@@ -15,7 +15,7 @@ import {
   capturesIn,
   dayRows,
   decidedBy,
-  defaultIraUrl,
+  aiName,
   defaultServer,
   duration,
   elapsed,
@@ -115,8 +115,6 @@ async function renderIdle() {
 
 async function renderAuto() {
   let v = await invoke<AutoView>("get_auto");
-  const st0 = await invoke<UiState>("get_state");
-  const defaultUrl = v.service_url ?? defaultIraUrl(st0.base_url);
   app.innerHTML = `
     <div class="page">
       <h1>Auto-tracking</h1>
@@ -127,8 +125,8 @@ async function renderAuto() {
           front (for example "Code — mmcg-platform"). This stays on your computer.</li>
         <li><b>Screenshots.</b> <span id="shots"></span></li>
         <li><b>AI.</b> When the window title is not enough, that screenshot and the title go
-          to Ira's server, which asks an AI (Claude) which of your projects it is. The server
-          does not keep the screenshot.</li>
+          to Ira's server, which asks <span id="ai"></span> which of your projects it is. The
+          server does not keep the screenshot.</li>
         <li><b>What goes to solidtime.</b> Only the project, the times and a short note such
           as "Fixing invoice export".</li>
         <li><b>Never captured.</b> <span id="excluded"></span>; nothing while paused, idle or locked.</li>
@@ -137,9 +135,6 @@ async function renderAuto() {
           menu, and in the end-of-day review fix projects and times, split blocks and delete
           screenshots before you submit.</li>
       </ul>
-      <label class="field">Ira service address
-        <input id="svc" autocomplete="off" spellcheck="false" />
-      </label>
       <div class="perm" id="perm"></div>
       <p class="status">Status: <b id="status"></b></p>
       <p id="err" class="error"></p>
@@ -148,8 +143,6 @@ async function renderAuto() {
         <button id="on" class="primary">I agree, turn on auto-tracking</button>
       </div>
     </div>`;
-  const svc = document.getElementById("svc") as HTMLInputElement;
-  svc.value = defaultUrl;
   const err = document.getElementById("err")!;
   const on = document.getElementById("on") as HTMLButtonElement;
   const off = document.getElementById("off") as HTMLButtonElement;
@@ -161,6 +154,7 @@ async function renderAuto() {
         ? `While tracking, once every ${every} during work hours (${v.work}), a small grayscale picture of the screen you are working on. It is kept only on this computer for ${plural(v.keep_days, "day")} so you can check your day in the review (you can delete any of them), then removed automatically.`
         : `Only when the window title is not enough, at most once every ${every} during work hours (${v.work}). Screenshots are not kept.`;
     document.getElementById("pin")!.textContent = plural(v.pin_minutes, "minute");
+    document.getElementById("ai")!.textContent = aiName(v.ai_provider);
     document.getElementById("excluded")!.textContent = v.excluded.length
       ? `Password managers and personal messengers (${v.excluded.join(", ")})`
       : "Nothing is excluded by your admin";
@@ -187,12 +181,19 @@ async function renderAuto() {
     }
   };
   paint();
+  // The server's current policy and AI provider, so the text above is what it really does.
+  invoke<AutoView>("load_auto")
+    .then((fresh) => {
+      v = fresh;
+      paint();
+    })
+    .catch(() => {});
 
   on.addEventListener("click", async () => {
     err.textContent = "";
     on.disabled = true;
     try {
-      v = await invoke<AutoView>("set_auto", { enabled: true, serviceUrl: svc.value });
+      v = await invoke<AutoView>("set_auto", { enabled: true });
       paint();
       if (!v.server_ready) err.textContent = "Connected, but AI is not configured on the server yet.";
     } catch (ex) {
@@ -202,7 +203,7 @@ async function renderAuto() {
     }
   });
   off.addEventListener("click", async () => {
-    v = await invoke<AutoView>("set_auto", { enabled: false, serviceUrl: null });
+    v = await invoke<AutoView>("set_auto", { enabled: false });
     paint();
   });
   listen("state-changed", async () => {

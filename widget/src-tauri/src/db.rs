@@ -596,6 +596,25 @@ pub const ACCOUNT_KEYS: &[&str] = &[
     "nudged",
 ];
 
+/// Settings learned from an Ira service. Kept only while they belong to the service of
+/// the server the user is signed in to.
+const SERVICE_KEYS: &[&str] = &["ai_url", "ai_policy", "ai_hints", "ai_hints_etag"];
+
+/// Drops the policy and hints of another server's Ira service (e.g. a test server used
+/// before switching to production with an older version). Returns whether it did.
+pub fn forget_other_service(c: &Connection, expected: Option<&str>) -> rusqlite::Result<bool> {
+    let stored = kv_get(c, "ai_url");
+    if stored.is_none() || stored.as_deref() == expected {
+        return Ok(false);
+    }
+    let tx = c.unchecked_transaction()?;
+    for k in SERVICE_KEYS {
+        kv_del(&tx, k)?;
+    }
+    tx.commit()?;
+    Ok(true)
+}
+
 /// Sign-out, in one transaction: entries, learned windows, screenshot records and the
 /// account's settings (incl. which days were submitted).
 pub fn forget_account(c: &Connection) -> rusqlite::Result<()> {
@@ -1387,6 +1406,33 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM context_cache", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn another_servers_service_settings_are_dropped() {
+        let c = mem();
+        let prod = Some("https://tracker.aasnatech.com/ira");
+        // Nothing stored: nothing to do.
+        assert!(!forget_other_service(&c, prod).unwrap());
+        // Same service: kept.
+        kv_set(&c, "ai_url", "https://tracker.aasnatech.com/ira").unwrap();
+        kv_set(&c, "ai_policy", "{}").unwrap();
+        assert!(!forget_other_service(&c, prod).unwrap());
+        assert!(kv_get(&c, "ai_policy").is_some());
+        // A test server's service left over from an older version: dropped.
+        for k in SERVICE_KEYS {
+            kv_set(&c, k, "x").unwrap();
+        }
+        kv_set(&c, "ai_url", "http://localhost:8010").unwrap();
+        kv_set(&c, "base_url", "https://tracker.aasnatech.com").unwrap();
+        assert!(forget_other_service(&c, prod).unwrap());
+        for k in SERVICE_KEYS {
+            assert_eq!(kv_get(&c, k), None, "{k}");
+        }
+        assert!(kv_get(&c, "base_url").is_some(), "the sign-in stays");
+        // Signed out (no server): any stored service is stale.
+        kv_set(&c, "ai_url", "https://tracker.aasnatech.com/ira").unwrap();
+        assert!(forget_other_service(&c, None).unwrap());
     }
 
     #[test]

@@ -30,7 +30,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started · ⏭ later phase
 
 | ID | Requirement | Status | Where / notes |
 |----|-------------|--------|---------------|
-| AT1 | Opt-in with a consent screen explaining what is captured, when, where it goes and what is kept | ✅ | `auto` window, `CONSENT_VERSION`; consent and learned data are cleared on sign-out |
+| AT1 | Opt-in with a consent screen explaining what is captured, when, where it goes and what is kept | ✅ | `auto` window, `CONSENT_VERSION` (v3: names the server's AI provider, shows the server's live policy); consent and learned data are cleared on sign-out |
 | AT2 | Timer follows the work without manual switching; hysteresis, backdated switches; unsure time → "Needs review" | ✅ | `auto.rs` `Engine` (unit-tested). Defaults: switch after 2 min, review below 0.6 confidence |
 | AT3 | Cheap signals first: front window → learned cache → admin keywords → AI | ✅ | Window checked every 20 s while active; AI at most once per capture interval (default 5 min) |
 | AT4 | Screenshots: visible to the engineer, never stored on the server | ✅ | Changed 19 Nov 2026 (consent v2): one per capture interval while tracking, kept only on the engineer's computer for 3 days (`IRA_KEEP_SCREENSHOTS_DAYS`, 0 = none) and shown in the day review; sent to the service only for AI classification; the service stores no image, title or token |
@@ -101,7 +101,7 @@ Platforms: the document requires **macOS and Windows** (acceptance criteria) and
 
 ## Points to confirm with Arvind (found while building)
 
-- **Auto-tracking consent and data protection:** engineers see a consent screen, but employees should also get a written notice (and HR/legal sign-off) before rollout. Screenshots and window titles are sent to Anthropic's API for classification (not used for training by default); ask Anthropic about zero-data-retention if required.
+- **Auto-tracking consent and data protection:** engineers see a consent screen, but employees should also get a written notice (and HR/legal sign-off) before rollout. Screenshots and window titles are sent to the server's AI provider for classification (production: Google Gemini API; or Anthropic), and the consent screen names it. Check the provider's data-use and retention terms (e.g. paid Gemini API tier, Anthropic zero-data-retention) before rollout.
 - **Open self-registration (testing only, 24 Nov 2026):** at the team's request, the server allows anyone to sign up without email confirmation (`REGISTRATION=on`, `REGISTRATION_DOMAINS='*'`). New accounts join the company organization as employees (`deploy/linux/onboard.sh`). This is not in the requirements document. Before rollout: add SMTP and switch to `invite-only`, or at least limit it to company domains.
 - **Auto entries in solidtime are not tagged:** solidtime tags would need tag-create permission for employees. The widget records `source=auto` locally and the service logs AI usage; tag syncing can follow if admins need it in solidtime.
 

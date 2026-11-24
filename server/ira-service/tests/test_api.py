@@ -36,6 +36,13 @@ def test_config_returns_policy(client):
     assert c["work_days"] == [1, 2, 3, 4, 5]
     assert "1Password" in c["excluded_apps"]
     assert c["keep_screenshots_days"] == 3
+    # The widget names the provider on its consent screen.
+    assert c["ai_provider"] == "anthropic"
+
+
+def test_config_names_the_gemini_provider(make_client):
+    with make_client(IRA_AI_PROVIDER="gemini") as c:
+        assert c.get("/v1/config", headers=h()).json()["ai_provider"] == "gemini"
 
 
 def test_config_reports_disabled_without_api_key(make_client):

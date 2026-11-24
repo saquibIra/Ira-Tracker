@@ -45,7 +45,7 @@ Prerequisites: Docker Desktop, Node 20+, Rust (`rustup`), Xcode command-line too
    ```bash
    cd widget && npm install && npm run tauri dev
    ```
-   Sign in with a solidtime personal API token (solidtime → Profile → API Tokens). The auto-tracking window opens next: read it, enter the Ira service address (`http://localhost:8010`) and turn it on. On macOS, allow Ira Tracker under System Settings → Privacy & Security → Screen Recording, then restart the app. **⌘⇧T** (Cmd+Shift+T) still switches projects by hand.
+   Sign in with a solidtime personal API token (solidtime → Profile → API Tokens). The auto-tracking window opens next: read it and turn it on (for a local server the app uses the Ira service at `http://localhost:8010`). On macOS, allow Ira Tracker under System Settings → Privacy & Security → Screen Recording, then restart the app. **⌘⇧T** (Cmd+Shift+T) still switches projects by hand.
 
 Developer checklist: [widget/README.md](widget/README.md). Full manual test plan (engineer + admin): [docs/MANUAL_TEST_PLAN.md](docs/MANUAL_TEST_PLAN.md).
 

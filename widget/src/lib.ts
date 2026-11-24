@@ -33,6 +33,8 @@ export interface AutoView {
   excluded: string[];
   keep_days: number;
   pin_minutes: number;
+  /** The AI the server asks ("gemini", "anthropic"); empty until the server was reached. */
+  ai_provider: string;
 }
 
 /** A screenshot kept on this computer for the review, with what auto-tracking decided. */
@@ -240,11 +242,11 @@ export function decidedBy(c: CaptureView): string {
 export const defaultServer = (configured: string | undefined): string =>
   (configured ?? "").trim().replace(/\/+$/, "") || "http://localhost:8000";
 
-/** The Ira service lives at <server>/ira in production; on its own port locally. */
-export function defaultIraUrl(server: string | null | undefined): string {
-  const s = (server ?? "").trim().replace(/\/+$/, "");
-  if (!s || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(s)) return "http://localhost:8010";
-  return `${s}/ira`;
+/** How the consent screen names the AI the server uses: "an AI (Google Gemini)". */
+export function aiName(provider: string | null | undefined): string {
+  const names: Record<string, string> = { gemini: "Google Gemini", anthropic: "Anthropic Claude" };
+  const name = names[(provider ?? "").trim().toLowerCase()];
+  return name ? `an AI (${name})` : "an AI";
 }
 
 /** "1 minute", "5 minutes". */

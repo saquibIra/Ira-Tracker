@@ -29,6 +29,26 @@ pub struct Policy {
     pub excluded_apps: Vec<String>,
     /// Screenshots kept on the engineer's computer for the day review; 0 = none.
     pub keep_screenshots_days: i64,
+    /// Which AI the server asks ("gemini", "anthropic"); named on the consent screen.
+    pub ai_provider: String,
+}
+
+/// The Ira service of a solidtime server: `<server>/ira` (Caddy routes it there), or the
+/// local development service next to a local solidtime. Derived, never configured, so
+/// a widget cannot keep talking to another server's service.
+pub fn service_url(server: &str) -> String {
+    let s = server.trim().trim_end_matches('/');
+    let host = s
+        .split_once("://")
+        .map_or(s, |(_, rest)| rest)
+        .split(['/', ':'])
+        .next()
+        .unwrap_or_default();
+    if host == "localhost" || host == "127.0.0.1" {
+        "http://localhost:8010".into()
+    } else {
+        format!("{s}/ira")
+    }
 }
 
 impl Default for Policy {
@@ -47,6 +67,7 @@ impl Default for Policy {
             work_end: "19:00".into(),
             review_at: "18:30".into(),
             keep_screenshots_days: 3,
+            ai_provider: String::new(),
             excluded_apps: [
                 "1Password",
                 "Bitwarden",
@@ -217,6 +238,31 @@ mod tests {
         assert!(p.enabled);
         assert_eq!(p.capture_interval_secs, 600);
         assert_eq!(p.min_switch_secs, 120, "missing fields keep defaults");
+    }
+
+    #[test]
+    fn service_is_derived_from_the_server() {
+        assert_eq!(
+            service_url("https://tracker.aasnatech.com"),
+            "https://tracker.aasnatech.com/ira"
+        );
+        assert_eq!(
+            service_url(" https://tracker.aasnatech.com/ "),
+            "https://tracker.aasnatech.com/ira"
+        );
+        assert_eq!(
+            service_url("http://localhost:8000"),
+            "http://localhost:8010"
+        );
+        assert_eq!(
+            service_url("http://127.0.0.1:8000/"),
+            "http://localhost:8010"
+        );
+        // A host that merely starts with "localhost" is not local.
+        assert_eq!(
+            service_url("https://localhost.example.com"),
+            "https://localhost.example.com/ira"
+        );
     }
 
     #[test]

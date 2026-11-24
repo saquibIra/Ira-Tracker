@@ -578,7 +578,9 @@ async fn sign_in(
         ] {
             db::kv_set(&db, k, v).map_err(|e| e.to_string())?;
         }
+        let _ = db::forget_other_service(&db, Some(&ai::service_url(&base)));
     }
+    st.auto.lock().unwrap().service = Some(ai::service_url(&base));
     let cfg = Config {
         base,
         token,
@@ -863,6 +865,7 @@ pub fn run() {
             idle::get_away,
             idle::resolve_away,
             auto::get_auto,
+            auto::load_auto,
             auto::set_auto,
             auto::request_screen_permission,
             auto::open_screen_settings,
@@ -898,6 +901,12 @@ pub fn run() {
                 .unwrap_or_default();
             let cfg = load_config(&conn);
             let signed_in = cfg.is_some();
+            // Policy and hints of another server's service (left by older versions after
+            // a switch from a test server) must not be used.
+            let service = db::kv_get(&conn, "base_url").map(|b| ai::service_url(&b));
+            if let Ok(true) = db::forget_other_service(&conn, service.as_deref()) {
+                log::info!("dropped settings of another server's Ira service");
+            }
             let auto_state = auto::AutoState::load(&conn);
             let auto_on = auto_state.enabled;
             let policy: ai::Policy = db::kv_get(&conn, "ai_policy")

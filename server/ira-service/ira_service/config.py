@@ -240,4 +240,6 @@ class Settings:
             "review_at": self.review_at,
             "excluded_apps": list(self.excluded_apps),
             "keep_screenshots_days": self.keep_screenshots_days,
+            # Named on the widget's consent screen.
+            "ai_provider": self.ai_provider,
         }

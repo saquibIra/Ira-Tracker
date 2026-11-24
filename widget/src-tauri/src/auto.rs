@@ -21,7 +21,9 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Bump when the consent text changes; users then confirm again.
-pub const CONSENT_VERSION: &str = "2"; // 2: screenshots kept on this computer for the review
+// 2: screenshots kept on this computer for the review. 3: names the AI provider the
+// server uses (Gemini or Claude) and shows the server's real policy.
+pub const CONSENT_VERSION: &str = "3";
 /// Context check interval while auto-tracking (the doc's ≤ 30 s polling budget).
 const TICK_SECS: u64 = 20;
 /// No input for this long: nothing changes on screen, skip the check.
@@ -344,7 +346,8 @@ impl AutoState {
         AutoState {
             enabled: db::kv_get(db, "auto_enabled").as_deref() == Some("1")
                 && db::kv_get(db, "consent_version").as_deref() == Some(CONSENT_VERSION),
-            service: db::kv_get(db, "ai_url"),
+            // Always the signed-in server's own service (see ai::service_url).
+            service: db::kv_get(db, "base_url").map(|b| ai::service_url(&b)),
             paused_until: db::kv_get(db, "paused_until")
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|t| t.with_timezone(&Utc))
@@ -834,6 +837,7 @@ pub struct AutoView {
     excluded: Vec<String>,
     keep_days: i64,
     pin_minutes: i64,
+    ai_provider: String,
 }
 
 pub fn view(st: &AppState) -> AutoView {
@@ -852,6 +856,7 @@ pub fn view(st: &AppState) -> AutoView {
         excluded: p.excluded_apps.clone(),
         keep_days: p.keep_screenshots_days,
         pin_minutes: (p.pin_secs / 60).max(1),
+        ai_provider: p.ai_provider.clone(),
     }
 }
 
@@ -860,13 +865,18 @@ pub fn get_auto(st: tauri::State<AppState>) -> AutoView {
     view(&st)
 }
 
+/// The settings window asks the server for its current policy and AI provider, so the
+/// consent screen describes what this server really does (user-invoked, so it may use
+/// the network). Offline, the last known policy stays.
+#[tauri::command]
+pub async fn load_auto(app: AppHandle) -> AutoView {
+    refresh(&app).await;
+    view(&app.state::<AppState>())
+}
+
 /// Turns auto-tracking on (after the user accepted the consent screen) or off.
 #[tauri::command]
-pub async fn set_auto(
-    app: AppHandle,
-    enabled: bool,
-    service_url: Option<String>,
-) -> Result<AutoView, String> {
+pub async fn set_auto(app: AppHandle, enabled: bool) -> Result<AutoView, String> {
     let st = app.state::<AppState>();
     if !enabled {
         {
@@ -884,7 +894,7 @@ pub async fn set_auto(
         .unwrap()
         .clone()
         .ok_or("Sign in to solidtime first")?;
-    let base = input::server_url(service_url.as_deref().unwrap_or_default())?;
+    let base = ai::service_url(&cfg.base);
     // Check the service and our access before turning anything on.
     let policy = ai::Service::new(&st.http, &base, &cfg.token, &cfg.org)
         .policy()

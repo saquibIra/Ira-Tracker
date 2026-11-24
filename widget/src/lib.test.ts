@@ -4,7 +4,7 @@ import {
   capturesIn,
   dayRows,
   decidedBy,
-  defaultIraUrl,
+  aiName,
   defaultServer,
   duration,
   elapsed,
@@ -214,9 +214,11 @@ describe("production defaults", () => {
     expect(defaultServer(undefined)).toBe("http://localhost:8000");
     expect(defaultServer("  ")).toBe("http://localhost:8000");
   });
-  it("finds the Ira service under /ira in production", () => {
-    expect(defaultIraUrl("https://time.example.com")).toBe("https://time.example.com/ira");
-    expect(defaultIraUrl("http://localhost:8000")).toBe("http://localhost:8010");
-    expect(defaultIraUrl(null)).toBe("http://localhost:8010");
+  it("names the server's AI on the consent screen", () => {
+    expect(aiName("gemini")).toBe("an AI (Google Gemini)");
+    expect(aiName(" Anthropic ")).toBe("an AI (Anthropic Claude)");
+    expect(aiName("")).toBe("an AI");
+    expect(aiName(undefined)).toBe("an AI");
+    expect(aiName("<b>x</b>")).toBe("an AI");
   });
 });
