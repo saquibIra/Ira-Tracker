@@ -102,6 +102,7 @@ Platforms: the document requires **macOS and Windows** (acceptance criteria) and
 ## Points to confirm with Arvind (found while building)
 
 - **Auto-tracking consent and data protection:** engineers see a consent screen, but employees should also get a written notice (and HR/legal sign-off) before rollout. Screenshots and window titles are sent to Anthropic's API for classification (not used for training by default); ask Anthropic about zero-data-retention if required.
+- **Open self-registration (testing only, 24 Nov 2026):** at the team's request, the server allows anyone to sign up without email confirmation (`REGISTRATION=on`, `REGISTRATION_DOMAINS='*'`). New accounts join the company organization as employees (`deploy/linux/onboard.sh`). This is not in the requirements document. Before rollout: add SMTP and switch to `invite-only`, or at least limit it to company domains.
 - **Auto entries in solidtime are not tagged:** solidtime tags would need tag-create permission for employees. The widget records `source=auto` locally and the service logs AI usage; tag syncing can follow if admins need it in solidtime.
 
 - **R5 vs "reconciliation never edits entries":** solidtime has no period lock, so edits in its web UI cannot be blocked. Proposal: snapshot entries at lock time, bill from the snapshot, flag later changes.

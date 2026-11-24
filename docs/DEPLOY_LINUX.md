@@ -42,6 +42,39 @@ HOST=<user>@<server-ip> KEY=<ssh-key.pem> \
 ssh -i <ssh-key.pem> <user>@<server-ip> sudo cat /opt/ira-data/admin-credentials.txt
 ```
 
+## Employee accounts
+
+The server has no email (SMTP) yet, so solidtime's own email confirmation can't work. There are two ways to give people an account.
+
+**Self-registration (currently on, for testing).** People sign up at `https://<domain>/register`.
+
+- Every minute, `onboard.sh` (cron) activates new accounts whose address matches `REGISTRATION_DOMAINS`. It checks four times a minute, so a new account works about 15 seconds after sign-up; reload the page if it still asks to confirm the email.
+- It adds each new account to the company organization as an employee and removes the empty personal organization solidtime made for them. The app then signs them straight into the company.
+- Log: `/opt/ira-data/onboard.log`.
+- `REGISTRATION_DOMAINS` is a comma-separated list of domains (for example `iratechnologies.com,aasnatech.com`), or `*` for any address. The default is the admin's domain.
+
+```bash
+# on, for any address (current testing setup)
+HOST=… KEY=… REGISTRATION=on REGISTRATION_DOMAINS='*' deploy/linux/deploy.sh
+# only company addresses
+HOST=… KEY=… REGISTRATION=on REGISTRATION_DOMAINS=iratechnologies.com deploy/linux/deploy.sh
+# off
+HOST=… KEY=… REGISTRATION=off deploy/linux/deploy.sh
+```
+
+Without email nobody proves they own the address. With `*`, anyone who finds the site can sign up and becomes an employee who sees project names. Check **Members** regularly and remove strangers.
+
+After SMTP is set up (the `MAIL_*` settings in `/opt/ira-data/laravel.env`), switch to `REGISTRATION=invite-only`. Admins then invite people under **Members**, people confirm their email, and `onboard.sh` stops.
+
+**Admin adds a person (no sign-up needed).** One command prints a login to send privately:
+
+```bash
+ssh -i <ssh-key.pem> <user>@<server-ip> \
+  'sudo /opt/ira-tracker/deploy/linux/add-user.sh "Full Name" name@company.com employee'
+```
+
+Roles: `employee`, `manager` or `admin`.
+
 ## AI key
 
 Create a Gemini API key at https://aistudio.google.com (Get API key), then run the deploy again with `GEMINI_API_KEY=…`.

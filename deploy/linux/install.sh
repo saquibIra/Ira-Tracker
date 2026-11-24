@@ -3,16 +3,23 @@
 # copied code (deploy.sh does this for you):
 #
 #   sudo DOMAIN=time.example.com ADMIN_EMAIL=you@example.com \
-#        [GEMINI_API_KEY=...] /opt/ira-tracker/deploy/linux/install.sh
+#        [GEMINI_API_KEY=...] [REGISTRATION=on|off|invite-only] \
+#        [REGISTRATION_DOMAINS='example.com,other.com' or '*'] \
+#        /opt/ira-tracker/deploy/linux/install.sh
 #
 # Safe to re-run: secrets and settings in /opt/ira-data are created once and kept.
+# REGISTRATION and REGISTRATION_DOMAINS are remembered in compose.env (default: off).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DATA="${DATA_DIR:-/opt/ira-data}"
 REQUESTED_DOMAIN="${DOMAIN:-}"
+REQUESTED_REGISTRATION="${REGISTRATION:-}"
+REQUESTED_REGISTRATION_DOMAINS="${REGISTRATION_DOMAINS:-}"
 log() { echo "[ira-install] $*"; }
 
+case "$REQUESTED_REGISTRATION" in "" | on | off | invite-only) ;; *) echo "REGISTRATION must be on, off or invite-only"; exit 1 ;; esac
+[[ "$REQUESTED_REGISTRATION_DOMAINS" =~ ^(\*|[A-Za-z0-9.,-]*)$ ]] || { echo "REGISTRATION_DOMAINS: domains separated by commas, or *"; exit 1; }
 command -v docker >/dev/null || { echo "Docker is required"; exit 1; }
 docker compose version >/dev/null || { echo "Docker Compose v2 is required"; exit 1; }
 
@@ -53,6 +60,24 @@ if [ -n "$REQUESTED_DOMAIN" ] && [ "$REQUESTED_DOMAIN" != "$DOMAIN" ]; then
   RECREATE="--force-recreate"
 fi
 
+# Remembered settings: add or replace KEY=value in compose.env.
+remember() {
+  if grep -q "^$1=" "$DATA/compose.env"; then
+    sed -i "s|^$1=.*|$1=$2|" "$DATA/compose.env"
+  else
+    echo "$1=$2" >>"$DATA/compose.env"
+  fi
+}
+if [ -n "$REQUESTED_REGISTRATION" ]; then
+  remember REGISTRATION "$REQUESTED_REGISTRATION"
+  REGISTRATION="$REQUESTED_REGISTRATION"
+fi
+if [ -n "$REQUESTED_REGISTRATION_DOMAINS" ]; then
+  remember REGISTRATION_DOMAINS "$REQUESTED_REGISTRATION_DOMAINS"
+  REGISTRATION_DOMAINS="$REQUESTED_REGISTRATION_DOMAINS"
+fi
+REGISTRATION="${REGISTRATION:-off}"
+
 if [ ! -f "$DATA/laravel.env" ]; then
   log "creating $DATA/laravel.env (new application keys)"
   docker pull -q "solidtime/solidtime:${SOLIDTIME_IMAGE_TAG:-latest}" >/dev/null
@@ -86,6 +111,14 @@ EOF
     docker run --rm "solidtime/solidtime:${SOLIDTIME_IMAGE_TAG:-latest}" php artisan self-host:generate-keys
   } >"$DATA/laravel.env"
   chmod 600 "$DATA/laravel.env"
+fi
+
+# Registration on the sign-in page (solidtime reads its settings when a container starts).
+if ! grep -qx "APP_ENABLE_REGISTRATION=\"$REGISTRATION\"" "$DATA/laravel.env"; then
+  log "registration: $REGISTRATION"
+  sed -i '/^APP_ENABLE_REGISTRATION=/d' "$DATA/laravel.env"
+  echo "APP_ENABLE_REGISTRATION=\"$REGISTRATION\"" >>"$DATA/laravel.env"
+  RECREATE="--force-recreate"
 fi
 
 if [ ! -f "$DATA/ira-service.env" ]; then
@@ -128,6 +161,16 @@ cat >/etc/cron.d/ira-tracker-backup <<EOF
 30 2 * * * root $HERE/backup.sh >>$DATA/backups/backup.log 2>&1
 EOF
 chmod 644 /etc/cron.d/ira-tracker-backup
+
+# 5. Self-registration without email: activate new accounts and add them to the company
+#    (onboard.sh; only while REGISTRATION=on).
+if [ "$REGISTRATION" = on ]; then
+  log "self-registration on for: ${REGISTRATION_DOMAINS:-${ADMIN_EMAIL#*@}} (log: $DATA/onboard.log)"
+  echo "* * * * * root $HERE/onboard.sh >>$DATA/onboard.log 2>&1" >/etc/cron.d/ira-tracker-onboard
+  chmod 644 /etc/cron.d/ira-tracker-onboard
+else
+  rm -f /etc/cron.d/ira-tracker-onboard
+fi
 
 docker image prune -f >/dev/null
 log "ready: https://$DOMAIN (admin login in $DATA/admin-credentials.txt)"

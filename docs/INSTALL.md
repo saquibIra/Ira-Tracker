@@ -4,7 +4,7 @@ Ira Tracker sits in your menu bar (Mac) or system tray (Windows). It records whi
 
 ## 1. Get your API token (once)
 
-1. Open **https://tracker.aasnatech.com** and sign in. (Your admin sends the invitation.)
+1. Create your account at **https://tracker.aasnatech.com/register**. If the page asks you to confirm your email, wait 15 seconds and reload it. No email is sent. If your admin already sent you a login, sign in at **https://tracker.aasnatech.com** instead.
 2. Click your name → **Profile** → **API Tokens** → **Create API Token**.
 3. Name it "Ira Tracker", then copy the token. You need it in step 3.
 

@@ -39,11 +39,18 @@ $COMPOSE exec -T -e IRA_NAME="$NAME" -e IRA_EMAIL="$EMAIL" -e IRA_ROLE="$ROLE" \
     $user = app(App\Service\UserService::class)->createUser(
         getenv("IRA_NAME"), $email, $password, "Asia/Kolkata", App\Enums\Weekday::Monday, $org->currency ?? "INR"
     );
-    $user->email_verified_at = now();
-    $user->save();
-    app(App\Service\MemberService::class)->addMember($user, $org, App\Enums\Role::from(getenv("IRA_ROLE")));
-    $user->current_team_id = $org->getKey();
-    $user->save();
+    Illuminate\Support\Facades\DB::transaction(function () use ($user, $org) {
+        $user->email_verified_at = now();
+        $user->save();
+        app(App\Service\MemberService::class)->addMember($user, $org, App\Enums\Role::from(getenv("IRA_ROLE")));
+        $user->current_team_id = $org->getKey();
+        $user->save();
+        // Remove the new, empty personal organization solidtime made, so the person has
+        // only the company and the app needs no organization choice.
+        foreach (App\Models\Organization::query()->where("user_id", $user->getKey())->where("personal_team", true)->get() as $o) {
+            if (! $o->is($org)) { app(App\Service\DeletionService::class)->deleteOrganization($o, false); }
+        }
+    });
     echo "Added ".$user->name." to \"".$org->name."\" as ".getenv("IRA_ROLE")."\n";
     echo "Login:    ".$email."\n";
     echo "Password: ".$password."   (ask them to change it under Profile)\n";
