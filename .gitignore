@@ -28,3 +28,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 server/autotrack/*.log
+test-results/
+playwright-report/

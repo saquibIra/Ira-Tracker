@@ -10,6 +10,7 @@ import {
   type EntryView,
   type Item,
   type Membership,
+  type SignInOutcome,
   type UiState,
   atLocalTime,
   capturesIn,
@@ -17,6 +18,7 @@ import {
   decidedBy,
   afterTurnOn,
   aiName,
+  bakedServer,
   defaultServer,
   duration,
   elapsed,
@@ -24,6 +26,7 @@ import {
   hhmm,
   itemHtml,
   label,
+  MARK_SVG,
   localHhmm,
   mismatch,
   plural,
@@ -731,68 +734,96 @@ async function renderNudge() {
 
 // ---------- sign-in window ----------
 
+// Welcome window: one "Sign in" button that finishes in the browser (see oauth.rs).
 function renderLogin() {
+  const baked = bakedServer(import.meta.env.VITE_TIMEPILOT_SERVER_URL);
   app.innerHTML = `
-    <form id="login" class="login">
-      <h1>Sign in to Time Pilot</h1>
-      <p class="muted">Create a personal API token in solidtime:
-        <b>Profile → API Tokens → Create</b>, then paste it here.</p>
-      <label>Server URL
-        <input id="url" value="" autocomplete="off" />
-      </label>
-      <label>API token
-        <textarea id="token" rows="4" placeholder="Paste token" autofocus></textarea>
-      </label>
-      <label id="org-row" hidden>Organization
-        <select id="org"></select>
-      </label>
-      <p id="err" class="error"></p>
-      <button id="go" type="submit">Sign in</button>
-    </form>`;
-  const form = document.getElementById("login") as HTMLFormElement;
+    <div class="welcome">
+      <div class="brand">
+        ${MARK_SVG}
+        <h1>Time Pilot</h1>
+        <p class="tagline">Your time, tracked to the right project. Automatically.</p>
+      </div>
+      <ul class="points" id="points">
+        <li>Recognises the project from the work on your screen. No timers to start.</li>
+        <li>Screenshots stay on this computer. Only projects and times are shared.</li>
+        <li>Check and submit your day in a minute.</li>
+      </ul>
+      <div class="orgs" id="orgs" hidden></div>
+      <div class="actions">
+        <label class="server" id="server-row">Server
+          <input id="url" autocomplete="off" spellcheck="false" />
+        </label>
+        <p id="err" class="error" role="alert"></p>
+        <button id="go" class="primary-btn" type="button">Sign in</button>
+        <button id="cancel" class="link-btn" type="button" hidden>Cancel</button>
+        <p class="fine" id="fine">Opens your browser to sign in with your Time Pilot account.</p>
+      </div>
+    </div>`;
   const err = document.getElementById("err")!;
   const go = document.getElementById("go") as HTMLButtonElement;
+  const cancel = document.getElementById("cancel") as HTMLButtonElement;
+  const fine = document.getElementById("fine")!;
   const url = document.getElementById("url") as HTMLInputElement;
-  const token = document.getElementById("token") as HTMLTextAreaElement;
-  url.value = defaultServer(import.meta.env.VITE_TIMEPILOT_SERVER_URL);
-  const orgRow = document.getElementById("org-row")!;
-  const org = document.getElementById("org") as HTMLSelectElement;
+  const serverRow = document.getElementById("server-row")!;
+  const points = document.getElementById("points")!;
+  const orgs = document.getElementById("orgs")!;
+  url.value = baked || defaultServer(undefined);
+  serverRow.hidden = Boolean(baked); // only development builds choose a server
 
-  // Changing the server or token invalidates a previously loaded organization list.
-  const resetOrgs = () => {
-    orgRow.hidden = true;
-    org.innerHTML = "";
+  const idle = () => {
+    go.disabled = false;
+    go.textContent = "Sign in";
+    cancel.hidden = true;
+    fine.textContent = "Opens your browser to sign in with your Time Pilot account.";
   };
-  url.addEventListener("input", resetOrgs);
-  token.addEventListener("input", resetOrgs);
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  const chooseOrganization = (list: Membership[]) => {
+    points.hidden = true;
+    go.hidden = true;
+    cancel.hidden = true;
+    fine.textContent = "You belong to several organizations. Time is tracked in the one you choose.";
+    orgs.innerHTML =
+      "<h2>Choose an organization</h2>" +
+      list
+        .map(
+          (o) =>
+            `<button class="org" type="button" data-id="${esc(o.org_id)}">` +
+            `<span>${esc(o.org_name)}</span><span class="role">${esc(o.role)}</span></button>`,
+        )
+        .join("");
+    orgs.hidden = false;
+    orgs.querySelectorAll<HTMLButtonElement>(".org").forEach((b) =>
+      b.addEventListener("click", async () => {
+        err.textContent = "";
+        orgs.querySelectorAll<HTMLButtonElement>(".org").forEach((x) => (x.disabled = true));
+        try {
+          await invoke("choose_organization", { organizationId: b.dataset.id });
+        } catch (ex) {
+          err.textContent = String(ex);
+          orgs.querySelectorAll<HTMLButtonElement>(".org").forEach((x) => (x.disabled = false));
+        }
+      }),
+    );
+  };
+
+  go.addEventListener("click", async () => {
     err.textContent = "";
     go.disabled = true;
-    go.textContent = "Checking…";
+    go.innerHTML = '<span class="spinner"></span>Waiting for your browser…';
+    cancel.hidden = false;
+    fine.textContent = "Finish signing in in your browser, then come back here.";
     try {
-      const args = { baseUrl: url.value, token: token.value };
-      if (orgRow.hidden) {
-        const orgs = await invoke<Membership[]>("list_organizations", args);
-        if (orgs.length > 1) {
-          // solidtime gives every user a personal organization; ask which one to track in.
-          org.innerHTML = orgs
-            .map((o) => `<option value="${esc(o.org_id)}">${esc(o.org_name)} (${esc(o.role)})</option>`)
-            .join("");
-          orgRow.hidden = false;
-          err.textContent = "This account belongs to several organizations. Choose one.";
-          return;
-        }
-      }
-      await invoke("sign_in", { ...args, organizationId: orgRow.hidden ? null : org.value });
+      const result = await invoke<SignInOutcome>("sign_in", { baseUrl: url.value });
+      if (result.status === "choose") chooseOrganization(result.organizations);
+      // "done": the app closes this window and continues.
     } catch (ex) {
       err.textContent = String(ex);
-    } finally {
-      go.disabled = false;
-      go.textContent = "Sign in";
+      idle();
     }
   });
+  cancel.addEventListener("click", () => invoke("cancel_sign_in"));
+  go.focus();
 }
 
 // ---------- quick switcher ----------

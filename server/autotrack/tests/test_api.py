@@ -240,3 +240,45 @@ def test_account_problem_pauses_ai_and_is_visible(client, claude):
     assert "credit balance" in client.get("/healthz").json()["ai_error"]
     usage = client.get("/v1/admin/usage", headers=h(token=ADMIN)).json()
     assert "credit balance" in usage["ai_error"]
+
+
+def test_client_info_is_public(make_client):
+    c = make_client(
+        TIMEPILOT_DESKTOP_CLIENT_ID="desk-1",
+        TIMEPILOT_ADMIN_CLIENT_ID="adm-2",
+        TIMEPILOT_PUBLIC_URL="https://tracker.example.com",
+    )
+    r = c.get("/v1/client")
+    assert r.status_code == 200
+    assert r.json() == {
+        "desktop_client_id": "desk-1",
+        "admin_client_id": "adm-2",
+        "server": "https://tracker.example.com",
+    }
+
+
+ADMIN_SIGN_IN = {
+    "code": "good-code",
+    "code_verifier": "v" * 43,
+    "redirect_uri": "http://localhost:8010/admin/",
+}
+
+
+def test_admin_sign_in_exchanges_the_code(make_client, fake_st):
+    c = make_client(TIMEPILOT_ADMIN_CLIENT_ID="adm-2")
+    r = c.post("/v1/admin/oauth/token", json=ADMIN_SIGN_IN)
+    assert r.status_code == 200
+    assert r.json() == {"access_token": ADMIN, "expires_in": 43200}  # no refresh token for the page
+    sent = fake_st.token_requests[-1]
+    assert sent["grant_type"] == "authorization_code"
+    assert sent["client_id"] == "adm-2"
+    assert sent["code_verifier"] == "v" * 43
+    assert sent["redirect_uri"] == ADMIN_SIGN_IN["redirect_uri"]
+    assert c.post("/v1/admin/oauth/token", json={**ADMIN_SIGN_IN, "code": "bad"}).status_code == 400
+    assert (
+        c.post("/v1/admin/oauth/token", json={**ADMIN_SIGN_IN, "code_verifier": "short"}).status_code == 422
+    )
+
+
+def test_admin_sign_in_needs_a_configured_client(client):
+    assert client.post("/v1/admin/oauth/token", json=ADMIN_SIGN_IN).status_code == 503

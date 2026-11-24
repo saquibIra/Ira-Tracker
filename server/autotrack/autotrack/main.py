@@ -44,6 +44,14 @@ ADMIN_CSP = (
 )
 
 
+class TokenIn(BaseModel):
+    """OAuth code from the admin page's browser sign-in (PKCE)."""
+
+    code: str = Field(min_length=1, max_length=4000)
+    code_verifier: str = Field(min_length=43, max_length=128)
+    redirect_uri: str = Field(min_length=8, max_length=500)
+
+
 class HintIn(BaseModel):
     description: str = Field(default="", max_length=1000)
     keywords: list[str] = Field(default_factory=list, max_length=30)
@@ -212,6 +220,34 @@ def create_app(
             "ai_error": ai_error(),
             "provider": settings.ai_provider,
         }
+
+    @app.get("/v1/client")
+    async def client_info():
+        """Public: the OAuth clients the desktop app and the admin page sign in with."""
+        return {
+            "desktop_client_id": settings.desktop_client_id,
+            "admin_client_id": settings.admin_client_id,
+            "server": settings.public_url,
+        }
+
+    @app.post("/v1/admin/oauth/token")
+    async def admin_token(body: TokenIn):
+        """Finishes the admin page's browser sign-in. Only the access token goes back to the
+        page (kept in that tab); the refresh token is not used."""
+        if not settings.admin_client_id:
+            raise HTTPException(503, "Admin sign-in is not configured on the server")
+        try:
+            t = await solidtime.exchange_code(
+                settings.admin_client_id, body.code, body.code_verifier, body.redirect_uri
+            )
+        except Unauthorized:
+            raise HTTPException(400, "Sign-in could not be completed. Try again.") from None
+        except Unavailable:
+            raise HTTPException(503, "The server is busy. Try again in a moment.") from None
+        token = t.get("access_token")
+        if not isinstance(token, str) or not token:
+            raise HTTPException(502, "The server did not return a token")
+        return {"access_token": token, "expires_in": t.get("expires_in")}
 
     @app.get("/v1/organizations")
     async def organizations(request: Request):

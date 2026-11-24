@@ -11,6 +11,9 @@ const store = {
   set: (k, v) => {
     try { sessionStorage.setItem(k, v); } catch { /* private mode: keep in memory only */ }
   },
+  remove: (k) => {
+    try { sessionStorage.removeItem(k); } catch { /* ignore */ }
+  },
   clear: () => {
     try { sessionStorage.clear(); } catch { /* ignore */ }
   },
@@ -55,34 +58,96 @@ function signOut() {
 
 $("signout").addEventListener("click", signOut);
 
-$("signin-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
+// ---------- browser sign-in (OAuth 2.0 with PKCE; the service finishes the exchange) ----------
+
+const b64url = (bytes) =>
+  btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const randomString = (n) => b64url(crypto.getRandomValues(new Uint8Array(n)));
+async function challengeFor(verifier) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return b64url(new Uint8Array(digest));
+}
+const redirectUri = () => `${location.origin}${BASE}/admin/`;
+
+$("signin-go").addEventListener("click", async () => {
   $("signin-err").textContent = "";
-  token = $("token").value.trim();
   try {
-    if ($("org-row").hidden) {
-      org = null;
-      const { organizations } = await api("/v1/organizations");
-      const admin = organizations.filter((o) => o.role === "owner" || o.role === "admin");
-      if (!admin.length) throw new Error("You are not an owner or admin of any organization.");
-      if (admin.length > 1) {
-        $("org").replaceChildren(
-          ...admin.map((o) => el("option", { value: o.org_id, text: `${o.org_name} (${o.role})` })),
-        );
-        $("org-row").hidden = false;
-        return;
-      }
-      org = admin[0].org_id;
-    } else {
-      org = $("org").value;
-    }
-    store.set("token", token);
-    store.set("org", org);
-    await start();
+    const r = await fetch(`${BASE}/v1/client`);
+    const info = await r.json();
+    if (!r.ok || !info.admin_client_id) throw new Error("Sign-in is not set up on this server yet.");
+    const verifier = randomString(48);
+    const state = randomString(16);
+    store.set("pkce_verifier", verifier);
+    store.set("pkce_state", state);
+    const url = new URL(`${info.server.replace(/\/$/, "")}/oauth/authorize`);
+    url.search = new URLSearchParams({
+      response_type: "code",
+      client_id: info.admin_client_id,
+      redirect_uri: redirectUri(),
+      scope: "create read update delete",
+      state,
+      code_challenge: await challengeFor(verifier),
+      code_challenge_method: "S256",
+    }).toString();
+    location.assign(url.toString());
   } catch (ex) {
     $("signin-err").textContent = ex.message;
   }
 });
+
+async function finishSignIn(params) {
+  history.replaceState(null, "", location.pathname); // the code must not stay in the address bar
+  const verifier = store.get("pkce_verifier");
+  const expected = store.get("pkce_state");
+  store.remove("pkce_verifier");
+  store.remove("pkce_state");
+  if (params.get("error")) {
+    throw new Error(params.get("error") === "access_denied" ? "Sign-in was cancelled." : params.get("error"));
+  }
+  if (!expected || params.get("state") !== expected || !verifier) {
+    throw new Error("The sign-in response did not match. Try again.");
+  }
+  const r = await fetch(`${BASE}/v1/admin/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: params.get("code"), code_verifier: verifier, redirect_uri: redirectUri() }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+  token = body.access_token;
+  await chooseOrganization();
+}
+
+async function chooseOrganization() {
+  org = null;
+  const { organizations } = await api("/v1/organizations");
+  const admin = organizations.filter((o) => o.role === "owner" || o.role === "admin");
+  if (!admin.length) throw new Error("You are not an owner or admin of any organization.");
+  if (admin.length > 1) {
+    $("org").replaceChildren(
+      ...admin.map((o) => el("option", { value: o.org_id, text: `${o.org_name} (${o.role})` })),
+    );
+    $("signin-go").hidden = true;
+    $("org-form").hidden = false;
+    return;
+  }
+  org = admin[0].org_id;
+  await signedIn();
+}
+
+$("org-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  org = $("org").value;
+  await signedIn();
+});
+
+async function signedIn() {
+  store.set("token", token);
+  store.set("org", org);
+  $("org-form").hidden = true;
+  $("signin-go").hidden = false;
+  await start();
+}
 
 document.querySelectorAll(".tab").forEach((b) =>
   b.addEventListener("click", () => {
@@ -195,4 +260,11 @@ async function start() {
   }
 }
 
-if (token && org) start();
+const returned = new URLSearchParams(location.search);
+if (returned.has("code") || returned.has("error")) {
+  finishSignIn(returned).catch((ex) => {
+    $("signin-err").textContent = ex.message;
+  });
+} else if (token && org) {
+  start();
+}

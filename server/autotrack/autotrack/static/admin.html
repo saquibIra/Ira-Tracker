@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Time Pilot Admin</title>
+  <title>Auto-tracking settings · Time Pilot</title>
   <link rel="stylesheet" href="admin.css" />
   <script src="admin.js" defer></script>
 </head>
 <body>
   <header>
-    <h1>Time Pilot admin</h1>
+    <h1>Time Pilot <span class="muted">Auto-tracking settings</span></h1>
     <span id="who" class="muted"></span>
     <button id="signout" class="link" hidden>Sign out</button>
   </header>
@@ -17,14 +17,14 @@
   <main>
     <section id="signin" class="card">
       <h2>Sign in</h2>
-      <p class="muted">Paste your solidtime personal API token (solidtime → Profile → API Tokens).
-        It stays in this browser tab only and is sent only to this server.</p>
-      <form id="signin-form">
-        <label>API token <input id="token" type="password" autocomplete="off" required /></label>
-        <label id="org-row" hidden>Organization <select id="org"></select></label>
-        <button type="submit" id="signin-go">Continue</button>
-        <p id="signin-err" class="error"></p>
+      <p class="muted">Sign in with your Time Pilot account. Auto-tracking settings are for
+        organization owners and admins.</p>
+      <button type="button" id="signin-go">Sign in with Time Pilot</button>
+      <form id="org-form" hidden>
+        <label>Organization <select id="org"></select></label>
+        <button type="submit">Continue</button>
       </form>
+      <p id="signin-err" class="error"></p>
     </section>
 
     <section id="app" hidden>

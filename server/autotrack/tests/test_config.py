@@ -28,6 +28,8 @@ def test_defaults_are_cheap_and_configurable():
         {**BASE, "TIMEPILOT_AI_ESCALATE_BELOW": "2"},
         {**BASE, "TIMEPILOT_CAPTURE_INTERVAL_SECS": "5"},
         {**BASE, "TIMEPILOT_REVIEW_AT": "25:00"},
+        {**BASE, "TIMEPILOT_DESKTOP_CLIENT_ID": "not a client id"},
+        {**BASE, "TIMEPILOT_PUBLIC_URL": "ftp://example.com"},
         {**BASE, "TIMEPILOT_AI_MODEL": "Robert'); DROP TABLE"},
         {**BASE, "TIMEPILOT_AI_REFUSAL_FALLBACK": "maybe"},
         {**BASE, "TIMEPILOT_KEEP_SCREENSHOTS_DAYS": "30"},

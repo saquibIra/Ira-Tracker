@@ -119,6 +119,11 @@ class Settings:
     # Logs: level and format ("json" for Google Cloud Logging, "text" locally).
     log_level: str = "INFO"
     log_format: str = "text"
+    # OAuth clients created by the installer (see the web app's timepilot:oauth-clients).
+    desktop_client_id: str = ""
+    admin_client_id: str = ""
+    # Address people open in the browser (sign-in pages); defaults to SOLIDTIME_URL.
+    public_url: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -152,6 +157,16 @@ class Settings:
             if value and not re.fullmatch(r"[a-z0-9][a-z0-9.\-]{2,63}", value):
                 raise ConfigError(f"{name} is not a valid model id")
 
+        public_url = env.get("TIMEPILOT_PUBLIC_URL", "").strip().rstrip("/") or url
+        if not re.fullmatch(r"https?://[^\s/?#]+(/[^\s?#]*)?", public_url):
+            raise ConfigError("TIMEPILOT_PUBLIC_URL must be an http(s) URL")
+        client_ids = {}
+        for name in ("TIMEPILOT_DESKTOP_CLIENT_ID", "TIMEPILOT_ADMIN_CLIENT_ID"):
+            value = env.get(name, "").strip()
+            if value and not re.fullmatch(r"[A-Za-z0-9-]{1,64}", value):
+                raise ConfigError(f"{name} is not a valid client id")
+            client_ids[name] = value
+
         excluded_raw = env.get("TIMEPILOT_EXCLUDED_APPS")
         excluded = (
             DEFAULT_EXCLUDED_APPS
@@ -161,6 +176,9 @@ class Settings:
 
         return cls(
             solidtime_url=url,
+            public_url=public_url,
+            desktop_client_id=client_ids["TIMEPILOT_DESKTOP_CLIENT_ID"],
+            admin_client_id=client_ids["TIMEPILOT_ADMIN_CLIENT_ID"],
             db_path=env.get("TIMEPILOT_DB_PATH", "").strip() or cls.db_path,
             ai_provider=provider,
             gcp_project=env.get("GOOGLE_CLOUD_PROJECT", "").strip(),

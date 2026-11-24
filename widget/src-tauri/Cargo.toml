@@ -29,9 +29,10 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock", "s
 uuid = { version = "1.29.0", features = ["v4"] }
 tokio = { version = "1.54.1", features = ["time", "sync", "macros"] }
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
-reqwest = { version = "0.13.5", default-features = false, features = ["json", "multipart", "native-tls", "query"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "multipart", "native-tls", "query", "form"] }
 jpeg-encoder = "0.7"
 base64 = "0.23"
+sha2 = "0.10"
 log = { version = "0.4", features = ["std"] }
 
 

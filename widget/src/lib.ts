@@ -85,6 +85,20 @@ export interface Membership {
   role: string;
 }
 
+/** What `sign_in` returns once the browser comes back. */
+export type SignInOutcome = { status: "done" } | { status: "choose"; organizations: Membership[] };
+
+/** The Time Pilot mark (same drawing as scripts/brand/make_brand.py). */
+export const MARK_SVG =
+  '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="12" fill="#0D9488"/>' +
+  '<circle cx="24" cy="24" r="14.5" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="3"/>' +
+  '<path d="M24 24V14M24 24l9-5.2" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>' +
+  '<path d="M36.1 17l-1.9 4.8-3.2-5.5z" fill="#fff"/><circle cx="24" cy="24" r="3" fill="#fff"/></svg>';
+
+/** The server a build was made for (VITE_TIMEPILOT_SERVER_URL); empty for development builds. */
+export const bakedServer = (configured: string | undefined): string =>
+  (configured ?? "").trim().replace(/\/+$/, "");
+
 export interface Away {
   start: string;
   end: string;

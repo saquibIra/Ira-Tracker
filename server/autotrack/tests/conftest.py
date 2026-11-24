@@ -35,11 +35,22 @@ class FakeSolidtime:
         self.calls: list[str] = []
         self.down = False
         self.extra_projects: list[dict] = []
+        self.token_requests: list[dict] = []
 
     def handler(self, request: httpx2.Request) -> httpx2.Response:
         self.calls.append(request.url.path)
         if self.down:
             return httpx2.Response(503)
+        if request.url.path == "/oauth/token" and request.method == "POST":
+            from urllib.parse import parse_qsl
+
+            form = dict(parse_qsl(request.content.decode()))
+            self.token_requests.append(form)
+            if form.get("code") == "good-code" and len(form.get("code_verifier", "")) >= 43:
+                return httpx2.Response(
+                    200, json={"access_token": ADMIN, "refresh_token": "refresh", "expires_in": 43200}
+                )
+            return httpx2.Response(400, json={"error": "invalid_grant"})
         token = request.headers.get("authorization", "").removeprefix("Bearer ")
         member = MEMBERS.get(token)
         if member is None:

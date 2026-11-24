@@ -7,6 +7,7 @@ mod context;
 mod db;
 mod idle;
 mod input;
+mod oauth;
 mod review;
 mod shots;
 
@@ -24,7 +25,8 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 use tokio::sync::Notify;
 
 const KEYRING_SERVICE: &str = "com.timepilot.desktop";
-const KEYRING_USER: &str = "solidtime-token";
+/// Keychain entry holding the signed-in session (OAuth access and refresh token).
+const KEYRING_USER: &str = "session";
 const TRAY_ID: &str = "main";
 const SWITCHER: &str = "switcher";
 const LOGIN: &str = "login";
@@ -52,6 +54,20 @@ struct AppState {
     auto_kick: Notify,
     /// App data folder (database, kept screenshots).
     data_dir: std::path::PathBuf,
+    /// The signed-in session (access and refresh token); also kept in the keychain.
+    session: Mutex<Option<oauth::Session>>,
+    /// Set by "Cancel" while the browser sign-in is open.
+    signin_cancel: std::sync::Arc<AtomicBool>,
+    /// Signed in in the browser, waiting for the person to choose an organization.
+    pending_signin: Mutex<Option<PendingSignIn>>,
+    /// The refresh token stopped working: the tray offers "Sign in again".
+    session_expired: AtomicBool,
+}
+
+struct PendingSignIn {
+    base: String,
+    session: oauth::Session,
+    memberships: Vec<api::Membership>,
 }
 
 /// solidtime requires UTC without fractional seconds.
@@ -335,6 +351,9 @@ fn refresh_tray(app: &AppHandle) -> tauri::Result<()> {
         );
     }
     menu = menu.separator().text("logs", "Open logs folder");
+    if st.session_expired.load(SeqCst) {
+        menu = menu.text("signin", "Sign in again…");
+    }
     menu = if s.signed_in {
         menu.text("signout", "Sign out")
     } else {
@@ -421,7 +440,7 @@ fn open_window_at(app: &AppHandle, label: &str, hash: &str) {
         return;
     }
     let (title, w, h, decorated, on_top) = match label {
-        LOGIN => ("Time Pilot – Sign in", 440.0, 420.0, true, true),
+        LOGIN => ("Time Pilot", 400.0, 560.0, true, true),
         AUTO => ("Time Pilot – Auto-tracking", 520.0, 600.0, true, true),
         review::REVIEW => ("Time Pilot – Review your day", 880.0, 760.0, true, false),
         _ => ("Time Pilot", 560.0, 460.0, false, true),
@@ -536,39 +555,104 @@ fn open_review(app: AppHandle) {
 
 /// Organizations available to this token; the sign-in window shows a picker when
 /// there is more than one.
-#[tauri::command]
-async fn list_organizations(
-    app: AppHandle,
-    base_url: String,
-    token: String,
-) -> Result<Vec<api::Membership>, String> {
-    let base = input::server_url(&base_url)?;
-    let st = app.state::<AppState>();
-    Api::new(&st.http, &base, token.trim())
-        .memberships()
-        .await
-        .map_err(|e| e.to_string())
+/// What the sign-in window shows after the browser comes back.
+#[derive(Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum SignInOutcome {
+    Done,
+    /// The account belongs to several organizations; the person picks one.
+    Choose {
+        organizations: Vec<api::Membership>,
+    },
 }
 
+/// Browser sign-in (see oauth.rs): opens the Time Pilot sign-in page in the default
+/// browser and waits for it to return to a loopback address.
 #[tauri::command]
-async fn sign_in(
-    app: AppHandle,
-    base_url: String,
-    token: String,
-    organization_id: Option<String>,
-) -> Result<(), String> {
+async fn sign_in(app: AppHandle, base_url: String) -> Result<SignInOutcome, String> {
     let base = input::server_url(&base_url)?;
-    let token = token.trim().to_string();
     let st = app.state::<AppState>();
-    let all = Api::new(&st.http, &base, &token)
+    let client_id = oauth::desktop_client_id(&st.http, &ai::service_url(&base)).await?;
+    let pkce = oauth::new_pkce();
+    let state = oauth::new_state();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("Could not start sign-in: {e}"))?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let redirect = oauth::redirect_uri(port);
+    let url = oauth::authorize_url(&base, &client_id, &redirect, &pkce.challenge, &state)?;
+    st.signin_cancel.store(false, SeqCst);
+    oauth::open_browser(&url)?;
+    log::info!("sign-in: waiting for the browser");
+    let cancel = st.signin_cancel.clone();
+    let code = tokio::task::spawn_blocking(move || {
+        oauth::wait_for_code(&listener, &state, &cancel, oauth::WAIT)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let session = oauth::exchange_code(
+        &st.http,
+        &base,
+        &client_id,
+        &code,
+        &pkce.verifier,
+        &redirect,
+    )
+    .await?;
+    let all = Api::new(&st.http, &base, &session.access_token)
         .memberships()
         .await
         .map_err(|e| e.to_string())?;
-    let chosen = api::choose_membership(&all, organization_id.as_deref())?;
-    let (org, member) = (chosen.org_id.clone(), chosen.member_id.clone());
+    if let Some(w) = app.get_webview_window(LOGIN) {
+        let _ = w.set_focus(); // the person started this sign-in
+    }
+    if all.len() > 1 {
+        *st.pending_signin.lock().unwrap() = Some(PendingSignIn {
+            base,
+            session,
+            memberships: all.clone(),
+        });
+        return Ok(SignInOutcome::Choose { organizations: all });
+    }
+    let chosen = api::choose_membership(&all, None)?.clone();
+    finish_sign_in(&app, base, session, &chosen).await?;
+    Ok(SignInOutcome::Done)
+}
+
+#[tauri::command]
+async fn choose_organization(app: AppHandle, organization_id: String) -> Result<(), String> {
+    let pending = app
+        .state::<AppState>()
+        .pending_signin
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or("Sign in again.")?;
+    let chosen = api::choose_membership(&pending.memberships, Some(&organization_id))?.clone();
+    finish_sign_in(&app, pending.base, pending.session, &chosen).await
+}
+
+#[tauri::command]
+fn cancel_sign_in(st: State<AppState>) {
+    st.signin_cancel.store(true, SeqCst);
+    *st.pending_signin.lock().unwrap() = None;
+}
+
+fn save_session(s: &oauth::Session) -> Result<(), String> {
+    let json = serde_json::to_string(s).map_err(|e| e.to_string())?;
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
-        .and_then(|k| k.set_password(&token))
-        .map_err(|e| format!("Could not save token to keychain: {e}"))?;
+        .and_then(|k| k.set_password(&json))
+        .map_err(|e| format!("Could not save the sign-in to the keychain: {e}"))
+}
+
+async fn finish_sign_in(
+    app: &AppHandle,
+    base: String,
+    session: oauth::Session,
+    chosen: &api::Membership,
+) -> Result<(), String> {
+    let st = app.state::<AppState>();
+    let (org, member) = (chosen.org_id.clone(), chosen.member_id.clone());
+    save_session(&session)?;
     {
         let db = st.db.lock().unwrap();
         for (k, v) in [
@@ -583,11 +667,13 @@ async fn sign_in(
     st.auto.lock().unwrap().service = Some(ai::service_url(&base));
     let cfg = Config {
         base,
-        token,
+        token: session.access_token.clone(),
         org,
         member,
     };
-    if pull(&app, &Api::from_config(&st.http, &cfg), &cfg)
+    *st.session.lock().unwrap() = Some(session);
+    st.session_expired.store(false, SeqCst);
+    if pull(app, &Api::from_config(&st.http, &cfg), &cfg)
         .await
         .is_err()
     {
@@ -595,14 +681,60 @@ async fn sign_in(
     }
     *st.cfg.lock().unwrap() = Some(cfg);
     *st.last_error.lock().unwrap() = None;
-    changed(&app);
+    log::info!("signed in");
+    changed(app);
     if let Some(w) = app.get_webview_window(LOGIN) {
         let _ = w.close();
     }
     if !st.auto.lock().unwrap().enabled {
-        open_window(&app, AUTO);
+        open_window(app, AUTO);
     }
     Ok(())
+}
+
+/// Renews the access token shortly before it expires (no network otherwise). If the
+/// refresh token no longer works, nothing is deleted: the tray asks to sign in again.
+async fn refresh_session(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    let Some(current) = st.session.lock().unwrap().clone() else {
+        return;
+    };
+    if !current.needs_refresh(chrono::Utc::now().timestamp()) {
+        return;
+    }
+    let Some(base) = st.cfg.lock().unwrap().as_ref().map(|c| c.base.clone()) else {
+        return;
+    };
+    match oauth::refresh(&st.http, &base, &current).await {
+        Ok(next) => {
+            if let Err(e) = save_session(&next) {
+                log::error!("{e}");
+            }
+            if let Some(c) = st.cfg.lock().unwrap().as_mut() {
+                c.token = next.access_token.clone();
+            }
+            *st.session.lock().unwrap() = Some(next);
+            log::info!("session renewed");
+        }
+        Err(oauth::RefreshError::Expired) => {
+            if !st.session_expired.swap(true, SeqCst) {
+                log::warn!("session ended; sign-in needed");
+                *st.last_error.lock().unwrap() =
+                    Some("Your sign-in has ended. Choose Sign in again.".into());
+                changed(app);
+            }
+        }
+        Err(oauth::RefreshError::Offline(e)) => {
+            log::warn!("session renewal failed, will retry: {e}")
+        }
+    }
+}
+
+async fn session_keeper(app: AppHandle) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        refresh_session(&app).await;
+    }
 }
 
 #[tauri::command]
@@ -627,6 +759,8 @@ fn sign_out(app: AppHandle) -> Result<(), String> {
     if let Ok(k) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
         let _ = k.delete_credential();
     }
+    *st.session.lock().unwrap() = None;
+    st.session_expired.store(false, SeqCst);
     *st.cfg.lock().unwrap() = None;
     *st.catalog.lock().unwrap() = Catalog::default();
     *st.last_error.lock().unwrap() = None;
@@ -793,6 +927,7 @@ async fn sync_loop(app: AppHandle) {
         }
         let busy = st.want_refresh.load(SeqCst) || db::pending_count(&st.db.lock().unwrap()) > 0;
         if busy {
+            refresh_session(&app).await;
             sync_once(&app).await;
             last = Some(std::time::Instant::now());
         }
@@ -809,15 +944,20 @@ async fn ticker(app: AppHandle) {
 
 // ---------- app ----------
 
-fn load_config(db: &Connection) -> Option<Config> {
+fn load_session() -> Option<oauth::Session> {
+    let json = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .ok()?
+        .get_password()
+        .ok()?;
+    serde_json::from_str(&json).ok()
+}
+
+fn load_config(db: &Connection, session: Option<&oauth::Session>) -> Option<Config> {
     Some(Config {
         base: db::kv_get(db, "base_url")?,
         org: db::kv_get(db, "org_id")?,
         member: db::kv_get(db, "member_id")?,
-        token: keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
-            .ok()?
-            .get_password()
-            .ok()?,
+        token: session?.access_token.clone(),
     })
 }
 
@@ -859,8 +999,9 @@ pub fn run() {
             start_timer,
             stop_timer,
             set_description,
-            list_organizations,
             sign_in,
+            choose_organization,
+            cancel_sign_in,
             sign_out,
             idle::get_away,
             idle::resolve_away,
@@ -899,7 +1040,8 @@ pub fn run() {
             let catalog = db::kv_get(&conn, "catalog")
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default();
-            let cfg = load_config(&conn);
+            let session = load_session();
+            let cfg = load_config(&conn, session.as_ref());
             let signed_in = cfg.is_some();
             // Policy and hints of another server's service (left by older versions after
             // a switch from a test server) must not be used.
@@ -932,6 +1074,10 @@ pub fn run() {
                 hints: Mutex::new(hints),
                 auto_kick: Notify::new(),
                 data_dir: dir.clone(),
+                session: Mutex::new(session),
+                signin_cancel: std::sync::Arc::new(AtomicBool::new(false)),
+                pending_signin: Mutex::new(None),
+                session_expired: AtomicBool::new(false),
             });
             {
                 let st = app.state::<AppState>();
@@ -968,6 +1114,7 @@ pub fn run() {
                 }
             }
             tauri::async_runtime::spawn(sync_loop(app.handle().clone()));
+            tauri::async_runtime::spawn(session_keeper(app.handle().clone()));
             tauri::async_runtime::spawn(ticker(app.handle().clone()));
             tauri::async_runtime::spawn(idle::monitor(app.handle().clone()));
             tauri::async_runtime::spawn(auto::monitor(app.handle().clone()));

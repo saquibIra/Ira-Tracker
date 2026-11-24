@@ -1,0 +1,93 @@
+# Local development and end-to-end tests: the Time Pilot web app (the solidtime fork in
+# ../web), Mailpit to catch every email, and the Autotrack service.
+#
+#   http://localhost:8000   web app (Super Admin panel at /admin)
+#   http://localhost:8025   Mailpit: every email the app sends, with links
+#   http://localhost:8010   Autotrack service (the desktop app's AI and settings)
+#
+#   cp laravel.env.example laravel.env   # then fill in the keys, see readme.md
+#   docker compose up -d --build
+name: timepilot-local
+
+x-web: &web
+  image: time-pilot/web:dev
+  build: ../web
+  restart: unless-stopped
+  user: "1000:1000"
+  env_file: [laravel.env]
+  volumes:
+    - app-storage:/var/www/html/storage
+  networks: [internal]
+  depends_on: [database]
+
+services:
+  app:
+    <<: *web
+    ports: ["127.0.0.1:8000:8000"]
+    environment:
+      CONTAINER_MODE: http
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health-check/up"]
+
+  scheduler:
+    <<: *web
+    environment:
+      CONTAINER_MODE: scheduler
+    healthcheck:
+      test: ["CMD", "healthcheck"]
+
+  queue:
+    <<: *web
+    environment:
+      CONTAINER_MODE: worker
+      WORKER_COMMAND: "php /var/www/html/artisan queue:work"
+    healthcheck:
+      test: ["CMD", "healthcheck"]
+
+  database:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${DB_DATABASE:-solidtime}"
+      POSTGRES_USER: "${DB_USERNAME:-solidtime}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-secret}"
+    volumes:
+      - database-storage:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "${DB_DATABASE:-solidtime}", "-U", "${DB_USERNAME:-solidtime}"]
+      retries: 3
+      timeout: 5s
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    networks: [internal]
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    ports: ["127.0.0.1:8025:8025"]
+    networks: [internal]
+
+  autotrack:
+    build: ../autotrack
+    image: time-pilot/autotrack:dev
+    restart: unless-stopped
+    env_file: [../autotrack/.env]
+    environment:
+      SOLIDTIME_URL: http://app:8000
+      TIMEPILOT_DB_PATH: /data/autotrack.db
+    ports: ["127.0.0.1:8010:8010"]
+    volumes:
+      - autotrack-data:/data
+    networks: [internal]
+    depends_on: [app]
+
+networks:
+  internal:
+
+volumes:
+  database-storage:
+  app-storage:
+  autotrack-data:
