@@ -86,10 +86,13 @@ class Catalogs:
         self._st = solidtime
         self._cache = TtlCache(ttl)
 
-    async def projects(self, c: Caller) -> list[Project]:
-        hit = self._cache.get(c.key)
-        if hit is not None:
-            return hit
+    async def projects(self, c: Caller, fresh: bool = False) -> list[Project]:
+        """Cached per caller; `fresh` skips the cache (admin pages must show a project
+        created a moment ago)."""
+        if not fresh:
+            hit = self._cache.get(c.key)
+            if hit is not None:
+                return hit
         projects = await self._st.projects(c.token, c.org_id)
         tasks = await self._st.tasks(c.token, c.org_id)
         clients = {x["id"]: x.get("name", "") for x in await self._st.clients(c.token, c.org_id)}

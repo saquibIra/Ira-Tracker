@@ -176,9 +176,9 @@ def create_app(
             raise HTTPException(403, "Admins only")
         return c
 
-    async def visible_projects(c: Caller) -> list[Project]:
+    async def visible_projects(c: Caller, fresh: bool = False) -> list[Project]:
         try:
-            base = await catalogs.projects(c)
+            base = await catalogs.projects(c, fresh=fresh)
         except Unauthorized:
             raise HTTPException(401, "Token rejected by solidtime") from None
         except (Unavailable, SolidtimeError) as e:
@@ -389,7 +389,7 @@ def create_app(
 
     @app.get("/v1/admin/projects")
     async def admin_projects(c: Caller = Depends(admin)):
-        projects = await visible_projects(c)
+        projects = await visible_projects(c, fresh=True)
         return {
             "projects": [
                 {
@@ -407,7 +407,7 @@ def create_app(
     async def admin_set_hint(project_id: str, body: HintIn, c: Caller = Depends(admin)):
         if not UUID_RE.fullmatch(project_id):
             raise HTTPException(400, "Invalid project id")
-        if not any(p.id == project_id for p in await visible_projects(c)):
+        if not any(p.id == project_id for p in await visible_projects(c, fresh=True)):
             raise HTTPException(404, "Unknown project")
         store.set_hint(c.org_id, project_id, body.description, body.keywords, c.member_id)
         log.info(

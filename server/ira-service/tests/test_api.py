@@ -132,6 +132,18 @@ def test_hint_description_reaches_the_prompt(client, claude):
     assert "about: Invoices" in claude.requests[0]["system"][1]["text"]
 
 
+def test_admin_sees_and_hints_a_project_created_a_moment_ago(client, fake_st):
+    # The admin's catalog is cached (e.g. by the widget calls of the same account) ...
+    assert client.get("/v1/hints", headers=h(token=ADMIN)).status_code == 200
+    new = "aaaaaaaa-0000-0000-0000-000000000009"
+    fake_st.extra_projects.append({"id": new, "name": "Fresh", "client_id": None, "is_archived": False})
+    # ... but the admin page reads solidtime afresh, so the new project can get keywords now.
+    names = [p["name"] for p in client.get("/v1/admin/projects", headers=h(token=ADMIN)).json()["projects"]]
+    assert "Fresh" in names
+    r = client.put(f"/v1/admin/hints/{new}", headers=h(token=ADMIN), json={"keywords": ["fresh-repo"]})
+    assert r.status_code == 200, r.text
+
+
 def test_admin_endpoints_require_admin_role(client):
     assert client.get("/v1/admin/projects", headers=h()).status_code == 403
     assert client.put(f"/v1/admin/hints/{P_BILLING}", headers=h(), json={}).status_code == 403

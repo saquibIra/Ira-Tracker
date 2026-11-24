@@ -34,6 +34,7 @@ class FakeSolidtime:
     def __init__(self):
         self.calls: list[str] = []
         self.down = False
+        self.extra_projects: list[dict] = []
 
     def handler(self, request: httpx2.Request) -> httpx2.Response:
         self.calls.append(request.url.path)
@@ -66,6 +67,7 @@ class FakeSolidtime:
                         {"id": P_PORTAL, "name": "Acme Portal", "client_id": "c1", "is_archived": False},
                         {"id": P_BILLING, "name": "Billing", "client_id": None, "is_archived": False},
                         {"id": P_ARCHIVED, "name": "Old", "client_id": None, "is_archived": True},
+                        *self.extra_projects,
                     ]
                 },
             )
