@@ -18,7 +18,7 @@ Everything runs on **one Compute Engine VM** with Docker:
 ## What you need
 
 - A Google Cloud project with billing enabled. Your account needs the Owner role, or Editor plus Security Admin.
-- A domain name for the server, e.g. `time.iratechnologies.com`, and access to its DNS settings.
+- A domain name for the server, e.g. `tracker.aasnatech.com`, and access to its DNS settings.
 - The `gcloud` CLI on your Mac, signed in: `brew install --cask google-cloud-sdk && gcloud auth login`.
 
 ## 1. Create the server (once, about 10 minutes)

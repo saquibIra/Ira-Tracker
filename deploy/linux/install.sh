@@ -10,6 +10,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DATA="${DATA_DIR:-/opt/ira-data}"
+REQUESTED_DOMAIN="${DOMAIN:-}"
 log() { echo "[ira-install] $*"; }
 
 command -v docker >/dev/null || { echo "Docker is required"; exit 1; }
@@ -38,6 +39,19 @@ EOF
 fi
 # shellcheck disable=SC1091
 . "$DATA/compose.env"
+
+# Domain change on an existing installation (DOMAIN=new.example.com install.sh).
+RECREATE=""
+if [ -n "$REQUESTED_DOMAIN" ] && [ "$REQUESTED_DOMAIN" != "$DOMAIN" ]; then
+  log "changing domain $DOMAIN -> $REQUESTED_DOMAIN"
+  sed -i "s|^DOMAIN=.*|DOMAIN=$REQUESTED_DOMAIN|" "$DATA/compose.env"
+  if [ -f "$DATA/laravel.env" ]; then
+    sed -i -e "s|^APP_URL=.*|APP_URL=\"https://$REQUESTED_DOMAIN\"|" \
+      -e "s|^MAIL_FROM_ADDRESS=.*|MAIL_FROM_ADDRESS=\"no-reply@$REQUESTED_DOMAIN\"|" "$DATA/laravel.env"
+  fi
+  DOMAIN="$REQUESTED_DOMAIN"
+  RECREATE="--force-recreate"
+fi
 
 if [ ! -f "$DATA/laravel.env" ]; then
   log "creating $DATA/laravel.env (new application keys)"
@@ -91,7 +105,7 @@ cd "$HERE"
 compose() { docker compose --env-file "$DATA/compose.env" "$@"; }
 log "starting containers (first run downloads ~5 GB of images)"
 compose pull --quiet --ignore-buildable
-compose up -d --build --remove-orphans
+compose up -d --build --remove-orphans $RECREATE
 
 # 3. Database
 for _ in $(seq 1 60); do

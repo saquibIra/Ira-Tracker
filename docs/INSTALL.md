@@ -4,7 +4,7 @@ Ira Tracker sits in your menu bar (Mac) or system tray (Windows). It records whi
 
 ## 1. Get your API token (once)
 
-1. Open **https://time.iratechnologies.com** and sign in. (Your admin sends the invitation.)
+1. Open **https://tracker.aasnatech.com** and sign in. (Your admin sends the invitation.)
 2. Click your name → **Profile** → **API Tokens** → **Create API Token**.
 3. Name it "Ira Tracker", then copy the token. You need it in step 3.
 
@@ -12,13 +12,13 @@ Ira Tracker sits in your menu bar (Mac) or system tray (Windows). It records whi
 
 **Mac**
 
-1. Download **https://time.iratechnologies.com/download/IraTracker-mac.dmg**.
+1. Download **https://tracker.aasnatech.com/download/IraTracker-mac.dmg**.
 2. Open it and drag **Ira Tracker** into **Applications**.
 3. Open Ira Tracker from Applications. The first time, macOS says it can't verify the developer. Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to Ira Tracker. You only do this once.
 
 **Windows**
 
-1. Download the installer from **https://time.iratechnologies.com/download/**.
+1. Download the installer from **https://tracker.aasnatech.com/download/**.
 2. Run it. If Windows SmartScreen appears, click **More info → Run anyway**.
 
 ## 3. Sign in and turn on auto-tracking

@@ -64,7 +64,7 @@ Developer checklist: [widget/README.md](widget/README.md). Full manual test plan
 
 Full requirement-by-requirement check: [docs/STATUS.md](docs/STATUS.md).
 
-**Production:** [docs/DEPLOY_LINUX.md](docs/DEPLOY_LINUX.md) covers the current deployment on the client server (https://time.iratechnologies.com). [docs/DEPLOY_GCP.md](docs/DEPLOY_GCP.md) is the alternative Google Cloud setup. [docs/INSTALL.md](docs/INSTALL.md) is the install guide for employees.
+**Production:** [docs/DEPLOY_LINUX.md](docs/DEPLOY_LINUX.md) covers the current deployment on the client server (https://tracker.aasnatech.com). [docs/DEPLOY_GCP.md](docs/DEPLOY_GCP.md) is the alternative Google Cloud setup. [docs/INSTALL.md](docs/INSTALL.md) is the install guide for employees.
 
 ## Tests
 

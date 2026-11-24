@@ -1,6 +1,6 @@
 # Deploying to a Linux server (client-provided)
 
-This guide is for any Ubuntu or Debian server with Docker. Production runs on the client's server (Ubuntu 24.04, 2 vCPU, 8 GB RAM, 96 GB disk) at **https://time.iratechnologies.com**. The server IP, SSH user and key are kept outside this public repository.
+This guide is for any Ubuntu or Debian server with Docker. Production runs on the client's server (Ubuntu 24.04, 2 vCPU, 8 GB RAM, 96 GB disk) at **https://tracker.aasnatech.com**. The server IP, SSH user and key are kept outside this public repository.
 
 | Address | What |
 |---|---|
@@ -17,13 +17,13 @@ The server cannot reach GitHub, so the code is copied from a Mac with rsync over
   - Inbound: ports 80 and 443.
   - Outbound HTTPS: Docker Hub, PyPI, Let's Encrypt and the AI provider.
 - **Access:** SSH with a sudo user.
-- **DNS:** an A record `<domain> → server IP`. For iratechnologies.com this is in Hostinger → DNS.
+- **DNS:** an A record `<domain> → server IP`. For aasnatech.com this is GoDaddy → My Products → DNS.
 
 ## Deploy or update (from the Mac, in the repository root)
 
 ```bash
 HOST=<user>@<server-ip> KEY=<ssh-key.pem> \
-  DOMAIN=time.iratechnologies.com ADMIN_EMAIL=<admin email> deploy/linux/deploy.sh
+  DOMAIN=tracker.aasnatech.com ADMIN_EMAIL=<admin email> deploy/linux/deploy.sh
 ```
 
 `DOMAIN` and `ADMIN_EMAIL` are only needed the first time. Later updates are `HOST=… KEY=… deploy/linux/deploy.sh`.
@@ -86,7 +86,7 @@ sudo $C start app scheduler queue
 ## Installers for employees
 
 ```bash
-IRA_SERVER_URL=https://time.iratechnologies.com PUBLISH_HOST=<user>@<server-ip> \
+IRA_SERVER_URL=https://tracker.aasnatech.com PUBLISH_HOST=<user>@<server-ip> \
   PUBLISH_KEY=<ssh-key.pem> scripts/release-mac.sh
 ```
 

@@ -32,7 +32,7 @@ jobs:
       - run: npm ci
       - name: Build installer
         env:
-          VITE_IRA_SERVER_URL: ${{ vars.IRA_SERVER_URL || 'https://time.iratechnologies.com' }}
+          VITE_IRA_SERVER_URL: ${{ vars.IRA_SERVER_URL || 'https://tracker.aasnatech.com' }}
         run: npm run tauri build -- --bundles nsis
       - name: Name the installer
         shell: bash
