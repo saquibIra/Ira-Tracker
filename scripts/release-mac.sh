@@ -49,13 +49,14 @@ echo "built $DMG"
 
 if [ -n "${PUBLISH_HOST:-}" ]; then
   : "${PUBLISH_KEY:?set PUBLISH_KEY, the SSH key for PUBLISH_HOST}"
-  scp -i "$PUBLISH_KEY" -o BatchMode=yes "$DMG" "$OUT/IraTracker-mac.dmg" "$PUBLISH_HOST:/tmp/"
+  # Only the linked "latest" file goes up; older versions are not kept on the server.
+  scp -i "$PUBLISH_KEY" -o BatchMode=yes "$OUT/IraTracker-mac.dmg" "$PUBLISH_HOST:/tmp/"
   ssh -i "$PUBLISH_KEY" -o BatchMode=yes "$PUBLISH_HOST" \
-    "sudo install -m 644 /tmp/IraTracker-*.dmg /opt/ira-data/downloads/ && rm -f /tmp/IraTracker-*.dmg"
+    "sudo install -m 644 /tmp/IraTracker-mac.dmg /opt/ira-data/downloads/ && rm -f /tmp/IraTracker-mac.dmg"
   echo "published: $IRA_SERVER_URL/download/IraTracker-mac.dmg"
 elif [ "${PUBLISH:-0}" = "1" ]; then
-  gcloud compute scp "$DMG" "$OUT/IraTracker-mac.dmg" "$VM:/tmp/" --zone "$ZONE"
+  gcloud compute scp "$OUT/IraTracker-mac.dmg" "$VM:/tmp/" --zone "$ZONE"
   gcloud compute ssh "$VM" --zone "$ZONE" -- \
-    "sudo install -m 644 /tmp/IraTracker-*.dmg /opt/ira-data/downloads/ && rm -f /tmp/IraTracker-*.dmg"
+    "sudo install -m 644 /tmp/IraTracker-mac.dmg /opt/ira-data/downloads/ && rm -f /tmp/IraTracker-mac.dmg"
   echo "published: $IRA_SERVER_URL/download/IraTracker-mac.dmg"
 fi
