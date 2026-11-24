@@ -13,7 +13,7 @@ set -euo pipefail
 
 : "${HOST:?set HOST, e.g. ubuntu@1.2.3.4}"
 : "${KEY:?set KEY, the SSH private key file}"
-[[ "${REGISTRATION:-}" =~ ^(|on|off|invite-only)$ ]] || { echo "REGISTRATION must be on, off or invite-only"; exit 1; }
+[[ "${REGISTRATION:-}" =~ ^(on|off|invite-only)?$ ]] || { echo "REGISTRATION must be on, off or invite-only"; exit 1; }
 [[ "${REGISTRATION_DOMAINS:-}" =~ ^(\*|[A-Za-z0-9.,-]*)$ ]] || { echo "REGISTRATION_DOMAINS: domains separated by commas, or *"; exit 1; }
 cd "$(dirname "$0")/../.."
 SSH=(ssh -i "$KEY" -o BatchMode=yes)
