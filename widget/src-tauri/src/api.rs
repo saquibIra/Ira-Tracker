@@ -85,7 +85,7 @@ pub struct Membership {
 }
 
 /// solidtime gives every user a personal organization, so an engineer invited to
-/// Ira usually has two memberships. With one membership it is used directly;
+/// An employee usually has two memberships. With one membership it is used directly;
 /// with several, the user must pick (`requested`).
 pub fn choose_membership<'m>(
     all: &'m [Membership],
@@ -281,23 +281,23 @@ mod tests {
 
     #[test]
     fn single_membership_is_used() {
-        let all = [m("ira")];
-        assert_eq!(choose_membership(&all, None).unwrap().org_id, "ira");
+        let all = [m("acme")];
+        assert_eq!(choose_membership(&all, None).unwrap().org_id, "acme");
     }
 
     #[test]
     fn several_memberships_need_a_choice() {
-        let all = [m("personal"), m("ira")];
+        let all = [m("personal"), m("acme")];
         assert!(choose_membership(&all, None).is_err());
         assert_eq!(
-            choose_membership(&all, Some("ira")).unwrap().member_id,
-            "member-ira"
+            choose_membership(&all, Some("acme")).unwrap().member_id,
+            "member-acme"
         );
     }
 
     #[test]
     fn unknown_or_missing_organization_is_rejected() {
-        assert!(choose_membership(&[m("ira")], Some("other")).is_err());
+        assert!(choose_membership(&[m("acme")], Some("other")).is_err());
         assert!(choose_membership(&[], None).is_err());
     }
 }

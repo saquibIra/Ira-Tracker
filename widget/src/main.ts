@@ -15,6 +15,7 @@ import {
   capturesIn,
   dayRows,
   decidedBy,
+  afterTurnOn,
   aiName,
   defaultServer,
   duration,
@@ -118,14 +119,14 @@ async function renderAuto() {
   app.innerHTML = `
     <div class="page">
       <h1>Auto-tracking</h1>
-      <p>Ira Tracker can log your time to the right project by itself, so you no longer
+      <p>Time Pilot can log your time to the right project by itself, so you no longer
         switch timers by hand. Please read how it works before you turn it on.</p>
       <ul class="facts">
         <li><b>What it looks at.</b> Every 20 seconds, the name and title of the window in
           front (for example "Code — mmcg-platform"). This stays on your computer.</li>
         <li><b>Screenshots.</b> <span id="shots"></span></li>
         <li><b>AI.</b> When the window title is not enough, that screenshot and the title go
-          to Ira's server, which asks <span id="ai"></span> which of your projects it is. The
+          to Time Pilot's server, which asks <span id="ai"></span> which of your projects it is. The
           server does not keep the screenshot.</li>
         <li><b>What goes to solidtime.</b> Only the project, the times and a short note such
           as "Fixing invoice export".</li>
@@ -137,6 +138,7 @@ async function renderAuto() {
       </ul>
       <div class="perm" id="perm"></div>
       <p class="status">Status: <b id="status"></b></p>
+      <p id="msg" class="notice" role="status"></p>
       <p id="err" class="error"></p>
       <div class="actions">
         <button id="off" class="secondary">Turn off</button>
@@ -144,6 +146,7 @@ async function renderAuto() {
       </div>
     </div>`;
   const err = document.getElementById("err")!;
+  const msg = document.getElementById("msg")!;
   const on = document.getElementById("on") as HTMLButtonElement;
   const off = document.getElementById("off") as HTMLButtonElement;
 
@@ -159,7 +162,8 @@ async function renderAuto() {
       ? `Password managers and personal messengers (${v.excluded.join(", ")})`
       : "Nothing is excluded by your admin";
     document.getElementById("status")!.textContent = v.status;
-    on.textContent = v.enabled ? "Save" : "I agree, turn on auto-tracking";
+    // Nothing to edit here once it is on, so the main button just closes the window.
+    on.textContent = v.enabled ? "Done" : "I agree, turn on auto-tracking";
     off.hidden = !v.enabled;
     const perm = document.getElementById("perm")!;
     if (v.permission === "granted") {
@@ -167,7 +171,7 @@ async function renderAuto() {
     } else if (v.permission === "denied") {
       perm.innerHTML = `
         <span>Screen Recording permission: <b>not allowed yet</b>. Without it only the app
-          name is used. Allow <b>Ira Tracker</b> in System Settings, then quit and reopen the app.</span>
+          name is used. Allow <b>Time Pilot</b> in System Settings, then quit and reopen the app.</span>
         <button id="ask" class="secondary">Allow…</button>
         <button id="settings" class="secondary">Open System Settings</button>`;
       document.getElementById("ask")!.addEventListener("click", async () => {
@@ -189,22 +193,39 @@ async function renderAuto() {
     })
     .catch(() => {});
 
+  // Confirms what happened, then closes the window (it is destroyed on close).
+  const confirmAndClose = (text: string) => {
+    msg.textContent = text;
+    on.disabled = off.disabled = true;
+    setTimeout(() => win.close(), 1200);
+  };
   on.addEventListener("click", async () => {
-    err.textContent = "";
+    if (v.enabled) {
+      win.close();
+      return;
+    }
+    err.textContent = msg.textContent = "";
     on.disabled = true;
     try {
       v = await invoke<AutoView>("set_auto", { enabled: true });
       paint();
-      if (!v.server_ready) err.textContent = "Connected, but AI is not configured on the server yet.";
+      const r = afterTurnOn(v);
+      if (r.close) return confirmAndClose(r.text);
+      (r.error ? err : msg).textContent = r.text;
     } catch (ex) {
       err.textContent = String(ex);
-    } finally {
-      on.disabled = false;
     }
+    on.disabled = false;
   });
   off.addEventListener("click", async () => {
-    v = await invoke<AutoView>("set_auto", { enabled: false });
-    paint();
+    err.textContent = msg.textContent = "";
+    try {
+      v = await invoke<AutoView>("set_auto", { enabled: false });
+      paint();
+      confirmAndClose("Auto-tracking is off.");
+    } catch (ex) {
+      err.textContent = String(ex);
+    }
   });
   listen("state-changed", async () => {
     v = await invoke<AutoView>("get_auto");
@@ -241,7 +262,7 @@ async function renderReview() {
       <div id="banner" class="banner" hidden>
         <span id="btext" class="grow"></span>
         <button id="bsettings" class="secondary">Open System Settings</button>
-        <button id="brestart" class="primary">Restart Ira Tracker</button>
+        <button id="brestart" class="primary">Restart Time Pilot</button>
       </div>
       <ul id="rows" class="rows"></ul>
       <ul id="acts" class="acts" hidden></ul>
@@ -358,9 +379,9 @@ async function renderReview() {
     const banner = document.getElementById("banner")!;
     banner.hidden = !denied && !day.capture_error;
     document.getElementById("btext")!.textContent = denied
-      ? "No screenshots: macOS has not given Ira Tracker Screen Recording access. In System Settings → Privacy & " +
-        "Security → Screen & System Audio Recording, turn Ira Tracker on (if it is already on, remove it with – and " +
-        "add it again with +). Then restart Ira Tracker."
+      ? "No screenshots: macOS has not given Time Pilot Screen Recording access. In System Settings → Privacy & " +
+        "Security → Screen & System Audio Recording, turn Time Pilot on (if it is already on, remove it with – and " +
+        "add it again with +). Then restart Time Pilot."
       : `Screenshots are failing: ${day.capture_error ?? ""}`;
     document.querySelectorAll<HTMLButtonElement>(".tabs .tab").forEach((b) =>
       b.classList.toggle("active", b.dataset.tab === tab),
@@ -713,7 +734,7 @@ async function renderNudge() {
 function renderLogin() {
   app.innerHTML = `
     <form id="login" class="login">
-      <h1>Sign in to Ira Tracker</h1>
+      <h1>Sign in to Time Pilot</h1>
       <p class="muted">Create a personal API token in solidtime:
         <b>Profile → API Tokens → Create</b>, then paste it here.</p>
       <label>Server URL
@@ -733,7 +754,7 @@ function renderLogin() {
   const go = document.getElementById("go") as HTMLButtonElement;
   const url = document.getElementById("url") as HTMLInputElement;
   const token = document.getElementById("token") as HTMLTextAreaElement;
-  url.value = defaultServer(import.meta.env.VITE_IRA_SERVER_URL);
+  url.value = defaultServer(import.meta.env.VITE_TIMEPILOT_SERVER_URL);
   const orgRow = document.getElementById("org-row")!;
   const org = document.getElementById("org") as HTMLSelectElement;
 

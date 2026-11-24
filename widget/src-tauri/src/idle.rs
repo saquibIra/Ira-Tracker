@@ -31,9 +31,9 @@ pub struct Away {
     pub label: String,
 }
 
-/// Threshold in seconds: `IRA_IDLE_SECS` (testing) overrides the `idle_minutes` setting.
+/// Threshold in seconds: `TIMEPILOT_IDLE_SECS` (testing) overrides the `idle_minutes` setting.
 fn threshold_secs(st: &AppState) -> i64 {
-    if let Some(s) = std::env::var("IRA_IDLE_SECS")
+    if let Some(s) = std::env::var("TIMEPILOT_IDLE_SECS")
         .ok()
         .and_then(|s| s.parse().ok())
     {
@@ -194,7 +194,7 @@ pub fn show_prompt(app: &AppHandle) {
     let (w, h) = (400.0, 168.0);
     let mut builder =
         WebviewWindowBuilder::new(app, IDLE_WINDOW, WebviewUrl::App("index.html".into()))
-            .title("Ira Tracker – Away")
+            .title("Time Pilot – Away")
             .inner_size(w, h)
             .resizable(false)
             .decorations(false)

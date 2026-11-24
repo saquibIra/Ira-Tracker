@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    ira_tracker_lib::run()
+    time_pilot_lib::run()
 }

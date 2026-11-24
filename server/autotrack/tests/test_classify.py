@@ -5,7 +5,7 @@ import anthropic
 import httpx2
 import pytest
 
-from ira_service.classify import (
+from autotrack.classify import (
     FALLBACK_BETA,
     AiUnavailable,
     Catalog,
@@ -18,7 +18,7 @@ from ira_service.classify import (
 from .conftest import FakeClaude, settings
 
 PROJECTS = [
-    Project(id="b", name="Billing", client=None, keywords=("ira-billing", "BILL-")),
+    Project(id="b", name="Billing", client=None, keywords=("acme-billing", "BILL-")),
     Project(
         id="a",
         name="Acme Portal",
@@ -41,7 +41,7 @@ def test_catalog_is_deterministic_and_maps_refs():
     assert c1.refs["P1"] == ("b", None)
     assert c1.refs["P2"] == ("a", None)
     assert c1.refs["P2.1"] == ("a", "t1")  # tasks sorted by name: API before UI
-    assert "keywords: ira-billing, BILL-" in c1.text
+    assert "keywords: acme-billing, BILL-" in c1.text
     assert "about: Customer portal" in c1.text
 
 
@@ -117,7 +117,7 @@ def test_escalation_can_be_turned_off(tmp_path):
     claude = FakeClaude()
     claude.answer(ref="P1", confidence=0.2)
     r = run(
-        Classifier(claude, settings(tmp_path, IRA_AI_ESCALATION_MODEL="")).classify(
+        Classifier(claude, settings(tmp_path, TIMEPILOT_AI_ESCALATION_MODEL="")).classify(
             Catalog.build(PROJECTS), "x", "y", None
         )
     )
@@ -155,14 +155,16 @@ def test_escalation_outage_falls_back_to_first_answer(tmp_path):
 def test_text_only_request_says_so(tmp_path):
     claude = FakeClaude()
     claude.answer()
-    run(Classifier(claude, settings(tmp_path)).classify(Catalog.build(PROJECTS), "Code", "ira-billing", None))
+    run(
+        Classifier(claude, settings(tmp_path)).classify(Catalog.build(PROJECTS), "Code", "acme-billing", None)
+    )
     content = claude.requests[0]["messages"][0]["content"]
     assert [b["type"] for b in content] == ["text"]
     assert "No screenshot available" in content[0]["text"]
 
 
 def test_account_problems_are_reported_as_such(tmp_path):
-    from ira_service.classify import AiAccountError
+    from autotrack.classify import AiAccountError
 
     from .conftest import CREDIT_MSG, anthropic_error
 

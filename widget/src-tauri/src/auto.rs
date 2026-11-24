@@ -5,7 +5,7 @@
 //! 1. the learned cache (earlier AI answers for this window, the user's corrections),
 //! 2. the admin's project keywords (repo names, ticket prefixes, customer names),
 //! 3. only if both fail, and at most once per capture interval: a small grayscale
-//!    screenshot sent to the Ira service, which asks Claude. The image is never stored.
+//!    screenshot sent to the Autotrack service, which asks Claude. The image is never stored.
 //!
 //! `Engine` turns those observations into timer switches with hysteresis (a new
 //! project must hold for `min_switch_secs`) and backdates each switch to when the work
@@ -339,16 +339,16 @@ impl AutoState {
 }
 
 fn tick() -> Duration {
-    let secs = std::env::var("IRA_AUTO_TICK_SECS")
+    let secs = std::env::var("TIMEPILOT_AUTO_TICK_SECS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(TICK_SECS);
     Duration::from_secs(secs.max(2))
 }
 
-/// Testing override for the capture interval (`IRA_CAPTURE_SECS=30`).
+/// Testing override for the capture interval (`TIMEPILOT_CAPTURE_SECS=30`).
 fn capture_interval(p: &Policy) -> i64 {
-    std::env::var("IRA_CAPTURE_SECS")
+    std::env::var("TIMEPILOT_CAPTURE_SECS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(p.capture_interval_secs)
@@ -378,7 +378,7 @@ pub fn status(st: &AppState) -> String {
         return "On (following your manual pick for now)".into();
     }
     if policy.keep_screenshots_days > 0 && context::screen_permission() == Permission::Denied {
-        return "On, but no screenshots: allow Screen Recording for Ira Tracker".into();
+        return "On, but no screenshots: allow Screen Recording for Time Pilot".into();
     }
     "On".into()
 }
@@ -477,7 +477,7 @@ async fn take_shot(st: &AppState, policy: &Policy, active: &Active) -> Option<ca
     }
 }
 
-/// Asks the Ira service; returns the observation and the AI's confidence.
+/// Asks the Autotrack service; returns the observation and the AI's confidence.
 async fn classify(
     app: &AppHandle,
     base: &str,
@@ -515,7 +515,7 @@ async fn classify(
             st.auto.lock().unwrap().error = Some(match e {
                 // The service explains AI outages (e.g. "AI unavailable: credit balance too low").
                 crate::api::ApiError::Offline(m) if m.starts_with("AI ") => m,
-                crate::api::ApiError::Offline(_) => "Ira service unreachable".into(),
+                crate::api::ApiError::Offline(_) => "Autotrack service unreachable".into(),
                 other => other.to_string(),
             });
             None
@@ -875,7 +875,7 @@ pub async fn set_auto(app: AppHandle, enabled: bool) -> Result<AutoView, String>
     let policy = ai::Service::new(&st.http, &base, &cfg.token, &cfg.org)
         .policy()
         .await
-        .map_err(|e| format!("Ira service: {e}"))?;
+        .map_err(|e| format!("Autotrack service: {e}"))?;
     {
         let db = st.db.lock().unwrap();
         for (k, v) in [
@@ -1090,8 +1090,8 @@ mod tests {
     #[test]
     fn fingerprint_ignores_unread_counters_and_case() {
         assert_eq!(
-            fingerprint("Slack", "(3) #acme - Ira"),
-            fingerprint("slack", "#acme - Ira")
+            fingerprint("Slack", "(3) #acme - Acme"),
+            fingerprint("slack", "#acme - Acme")
         );
         assert_eq!(fingerprint("Code", "  a   b "), format!("code{SEP}a b"));
         assert_ne!(fingerprint("Code", "(draft) x"), fingerprint("Code", "x"));
@@ -1107,11 +1107,11 @@ mod tests {
     #[test]
     fn keywords_match_at_word_start_and_must_be_unique() {
         let hints = [
-            hint("bill", &["ira-billing", "BILL-"]),
+            hint("bill", &["orbit-billing", "BILL-"]),
             hint("acme", &["acme"]),
         ];
         assert_eq!(
-            match_hints("Code — ira-billing — invoice.rs", &hints),
+            match_hints("Code — orbit-billing — invoice.rs", &hints),
             Some("bill")
         );
         assert_eq!(
@@ -1132,8 +1132,8 @@ mod tests {
     fn only_specific_titles_are_remembered() {
         for t in [
             "index.ts — mmcg-platform",
-            "auto.rs — ira_tracker",
-            "#random - Ira Technologies - Slack",
+            "auto.rs — time_pilot",
+            "#random - Acme Studio - Slack",
             "[MOB-142] Push notifications crash on Android",
         ] {
             assert!(specific(&fingerprint("App", t)), "{t}");

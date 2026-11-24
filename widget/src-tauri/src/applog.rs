@@ -1,4 +1,4 @@
-//! App log file for support: `<app data>/logs/ira-tracker.log`, rotated at 1 MB (one
+//! App log file for support: `<app data>/logs/time-pilot.log`, rotated at 1 MB (one
 //! previous file kept). Also printed to stderr when run from a terminal.
 //!
 //! Never log window titles, screenshots, descriptions or tokens.
@@ -39,7 +39,7 @@ impl FileLog {
 
 impl log::Log for FileLog {
     fn enabled(&self, m: &log::Metadata) -> bool {
-        m.level() <= log::Level::Info || m.target().starts_with("ira_tracker")
+        m.level() <= log::Level::Info || m.target().starts_with("time_pilot")
     }
 
     fn log(&self, r: &log::Record) {
@@ -50,7 +50,7 @@ impl log::Log for FileLog {
             "{} {:<5} {}: {}\n",
             chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
             r.level(),
-            r.target().trim_start_matches("ira_tracker_lib::"),
+            r.target().trim_start_matches("time_pilot_lib::"),
             r.args()
         );
         if cfg!(debug_assertions) {
@@ -74,7 +74,7 @@ impl log::Log for FileLog {
 pub fn init(data_dir: &Path) {
     let d = dir(data_dir);
     let _ = std::fs::create_dir_all(&d);
-    let path = d.join("ira-tracker.log");
+    let path = d.join("time-pilot.log");
     let logger = FileLog {
         file: Mutex::new(FileLog::open(&path)),
         path,
@@ -91,9 +91,9 @@ mod tests {
 
     #[test]
     fn rotates_when_the_file_gets_big() {
-        let tmp = std::env::temp_dir().join(format!("ira-log-{}", uuid::Uuid::new_v4()));
+        let tmp = std::env::temp_dir().join(format!("timepilot-log-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp).unwrap();
-        let path = tmp.join("ira-tracker.log");
+        let path = tmp.join("time-pilot.log");
         std::fs::write(&path, vec![b'x'; (MAX_BYTES + 10) as usize]).unwrap();
         let logger = FileLog {
             file: Mutex::new(FileLog::open(&path)),
@@ -103,11 +103,11 @@ mod tests {
             &log::Record::builder()
                 .args(format_args!("hello"))
                 .level(log::Level::Info)
-                .target("ira_tracker_lib::auto")
+                .target("time_pilot_lib::auto")
                 .build(),
         );
         logger.flush();
-        assert!(tmp.join("ira-tracker.log.1").exists());
+        assert!(tmp.join("time-pilot.log.1").exists());
         let fresh = std::fs::read_to_string(&path).unwrap();
         assert!(fresh.contains("INFO  auto: hello"), "{fresh}");
         std::fs::remove_dir_all(&tmp).unwrap();

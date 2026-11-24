@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  afterTurnOn,
   atLocalTime,
   capturesIn,
   dayRows,
@@ -220,5 +221,28 @@ describe("production defaults", () => {
     expect(aiName("")).toBe("an AI");
     expect(aiName(undefined)).toBe("an AI");
     expect(aiName("<b>x</b>")).toBe("an AI");
+  });
+});
+
+describe("afterTurnOn", () => {
+  it("closes the window when everything is ready", () => {
+    expect(afterTurnOn({ server_ready: true, permission: "granted" })).toEqual({
+      text: "Auto-tracking is on.",
+      error: false,
+      close: true,
+    });
+    // Systems without screenshots have nothing left to ask for either.
+    expect(afterTurnOn({ server_ready: true, permission: "unsupported" }).close).toBe(true);
+  });
+  it("stays open while Screen Recording is still needed", () => {
+    const r = afterTurnOn({ server_ready: true, permission: "denied" });
+    expect(r.close).toBe(false);
+    expect(r.error).toBe(false);
+    expect(r.text).toContain("Screen Recording");
+  });
+  it("stays open with a warning when the server has no AI", () => {
+    const r = afterTurnOn({ server_ready: false, permission: "granted" });
+    expect(r).toMatchObject({ error: true, close: false });
+    expect(r.text).toContain("not configured");
   });
 });

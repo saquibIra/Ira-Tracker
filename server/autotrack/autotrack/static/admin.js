@@ -2,7 +2,7 @@
 // Admin page. All server data is inserted with textContent / form values, never as HTML.
 
 const $ = (id) => document.getElementById(id);
-// The page may be served at /admin/ or behind a prefix such as /ira/admin/.
+// The page may be served at /admin/ or behind a prefix such as /autotrack/admin/.
 const BASE = location.pathname.replace(/\/admin\/?.*$/, "");
 const store = {
   get: (k) => {
@@ -20,7 +20,7 @@ let org = store.get("org");
 
 async function api(path, opts = {}) {
   const headers = { Authorization: `Bearer ${token}`, ...(opts.headers || {}) };
-  if (org) headers["X-Ira-Org"] = org;
+  if (org) headers["X-TimePilot-Org"] = org;
   if (opts.body) headers["Content-Type"] = "application/json";
   const r = await fetch(BASE + path, { ...opts, headers });
   if (!r.ok) {

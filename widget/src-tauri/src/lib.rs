@@ -23,7 +23,7 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWin
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tokio::sync::Notify;
 
-const KEYRING_SERVICE: &str = "com.ira.tracker";
+const KEYRING_SERVICE: &str = "com.timepilot.desktop";
 const KEYRING_USER: &str = "solidtime-token";
 const TRAY_ID: &str = "main";
 const SWITCHER: &str = "switcher";
@@ -223,7 +223,7 @@ fn update_tooltip(app: &AppHandle) {
             let how = if r.auto { " (auto)" } else { "" };
             format!("{short} — {}{how}{sync_note}", elapsed(&r.start))
         }
-        None => format!("Ira Tracker — stopped{sync_note}"),
+        None => format!("Time Pilot — stopped{sync_note}"),
     };
     let auto_on = st.auto.lock().unwrap().enabled; // guard dropped before status() locks again
     let text = if auto_on {
@@ -340,7 +340,7 @@ fn refresh_tray(app: &AppHandle) -> tauri::Result<()> {
     } else {
         menu.text("signin", "Sign in…")
     };
-    tray.set_menu(Some(menu.text("quit", "Quit Ira Tracker").build()?))?;
+    tray.set_menu(Some(menu.text("quit", "Quit Time Pilot").build()?))?;
     tray.set_icon(Some(tray_icon(s.running.is_some())))?;
     update_tooltip(app);
     Ok(())
@@ -421,10 +421,10 @@ fn open_window_at(app: &AppHandle, label: &str, hash: &str) {
         return;
     }
     let (title, w, h, decorated, on_top) = match label {
-        LOGIN => ("Ira Tracker – Sign in", 440.0, 420.0, true, true),
-        AUTO => ("Ira Tracker – Auto-tracking", 520.0, 600.0, true, true),
-        review::REVIEW => ("Ira Tracker – Review your day", 880.0, 760.0, true, false),
-        _ => ("Ira Tracker", 560.0, 460.0, false, true),
+        LOGIN => ("Time Pilot – Sign in", 440.0, 420.0, true, true),
+        AUTO => ("Time Pilot – Auto-tracking", 520.0, 600.0, true, true),
+        review::REVIEW => ("Time Pilot – Review your day", 880.0, 760.0, true, false),
+        _ => ("Time Pilot", 560.0, 460.0, false, true),
     };
     if label == review::REVIEW
         && let Some(n) = app.get_webview_window(review::NUDGE)
@@ -617,7 +617,7 @@ fn sign_out(app: AppHandle) -> Result<(), String> {
             ));
         }
         // Consent, everything learned about this person's windows and the server's
-        // Ira service go with them (signing in elsewhere must not use the old service).
+        // Autotrack service go with them (signing in elsewhere must not use the old service).
         db::forget_account(&db).map_err(|e| e.to_string())?;
     }
     *st.auto.lock().unwrap() = auto::AutoState::default();
@@ -832,7 +832,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
-            // `open -a "Ira Tracker" --args --review` (or `--activity`) opens the day review.
+            // `open -a "Time Pilot" --args --review` (or `--activity`) opens the day review.
             if args.iter().any(|a| a == "--activity") {
                 open_review_tab(app, "activity")
             } else if args.iter().any(|a| a == "--review") {
@@ -890,7 +890,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             applog::init(&dir);
             log::info!(
-                "Ira Tracker {} starting ({} {})",
+                "Time Pilot {} starting ({} {})",
                 app.package_info().version,
                 std::env::consts::OS,
                 std::env::consts::ARCH
@@ -905,7 +905,7 @@ pub fn run() {
             // a switch from a test server) must not be used.
             let service = db::kv_get(&conn, "base_url").map(|b| ai::service_url(&b));
             if let Ok(true) = db::forget_other_service(&conn, service.as_deref()) {
-                log::info!("dropped settings of another server's Ira service");
+                log::info!("dropped settings of another server's Autotrack service");
             }
             let auto_state = auto::AutoState::load(&conn);
             let auto_on = auto_state.enabled;
@@ -979,7 +979,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building Ira Tracker")
+        .expect("error while building Time Pilot")
         .run(|_, event| {
             // Closing the last window must not quit a tray app.
             if let RunEvent::ExitRequested {

@@ -64,7 +64,7 @@ def main():
     member_id = membership["id"]
 
     call("PUT", f"/organizations/{org}", {
-        "name": "Ira Technologies",
+        "name": "Demo Company",
         "prevent_overlapping_time_entries": True,
     })
 

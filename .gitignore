@@ -27,4 +27,4 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
-server/ira-service/*.log
+server/autotrack/*.log

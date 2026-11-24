@@ -1,4 +1,4 @@
-//! Client for the Ira service (server/ira-service): auto-tracking policy, project
+//! Client for the Autotrack service (server/autotrack): auto-tracking policy, project
 //! keyword hints, screen classification and day submission.
 //!
 //! Auth is the engineer's solidtime token plus the organization id; the service checks
@@ -31,7 +31,7 @@ pub struct Policy {
     pub ai_provider: String,
 }
 
-/// The Ira service of a solidtime server: `<server>/ira` (Caddy routes it there), or the
+/// The Autotrack service of a solidtime server: `<server>/autotrack` (Caddy routes it there), or the
 /// local development service next to a local solidtime. Derived, never configured, so
 /// a widget cannot keep talking to another server's service.
 pub fn service_url(server: &str) -> String {
@@ -45,7 +45,7 @@ pub fn service_url(server: &str) -> String {
     if host == "localhost" || host == "127.0.0.1" {
         "http://localhost:8010".into()
     } else {
-        format!("{s}/ira")
+        format!("{s}/autotrack")
     }
 }
 
@@ -117,7 +117,7 @@ impl<'a> Service<'a> {
     async fn send(&self, req: RequestBuilder) -> Result<reqwest::Response, ApiError> {
         let res = req
             .bearer_auth(self.token)
-            .header("X-Ira-Org", self.org)
+            .header("X-TimePilot-Org", self.org)
             .header("Accept", "application/json")
             .send()
             .await
@@ -239,11 +239,11 @@ mod tests {
     fn service_is_derived_from_the_server() {
         assert_eq!(
             service_url("https://tracker.aasnatech.com"),
-            "https://tracker.aasnatech.com/ira"
+            "https://tracker.aasnatech.com/autotrack"
         );
         assert_eq!(
             service_url(" https://tracker.aasnatech.com/ "),
-            "https://tracker.aasnatech.com/ira"
+            "https://tracker.aasnatech.com/autotrack"
         );
         assert_eq!(
             service_url("http://localhost:8000"),
@@ -256,7 +256,7 @@ mod tests {
         // A host that merely starts with "localhost" is not local.
         assert_eq!(
             service_url("https://localhost.example.com"),
-            "https://localhost.example.com/ira"
+            "https://localhost.example.com/autotrack"
         );
     }
 
@@ -269,13 +269,17 @@ mod tests {
         assert_eq!(c.project_id.as_deref(), Some("p"));
     }
 
-    /// Against a running Ira service + solidtime:
-    /// `IRA_E2E_URL=http://localhost:8010 IRA_E2E_TOKEN=… IRA_E2E_ORG=… cargo test e2e_ -- --ignored --nocapture`
+    /// Against a running Autotrack service + solidtime:
+    /// `TIMEPILOT_E2E_URL=http://localhost:8010 TIMEPILOT_E2E_TOKEN=… TIMEPILOT_E2E_ORG=… cargo test e2e_ -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn e2e_service_round_trip() {
         let env = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("set {k}"));
-        let (url, token, org) = (env("IRA_E2E_URL"), env("IRA_E2E_TOKEN"), env("IRA_E2E_ORG"));
+        let (url, token, org) = (
+            env("TIMEPILOT_E2E_URL"),
+            env("TIMEPILOT_E2E_TOKEN"),
+            env("TIMEPILOT_E2E_ORG"),
+        );
         let http = Client::new();
         let svc = Service::new(&http, &url, &token, &org);
         tauri::async_runtime::block_on(async {
@@ -299,7 +303,7 @@ mod tests {
             );
             let jpg = crate::capture::encode_jpeg(&[128u8; 64 * 48], 64, 48, 60).unwrap();
             match svc
-                .classify("Code", "ira-billing — invoice.rs", Some(jpg))
+                .classify("Code", "orbit-billing — invoice.rs", Some(jpg))
                 .await
             {
                 Ok(c) => println!("classify: {c:?}"),

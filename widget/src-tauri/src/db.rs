@@ -578,7 +578,7 @@ pub fn forget_all(c: &Connection) -> rusqlite::Result<()> {
     c.execute_batch("DELETE FROM entry; DELETE FROM context_cache; DELETE FROM capture;")
 }
 
-/// Settings that belong to the signed-in account and its server. The Ira service
+/// Settings that belong to the signed-in account and its server. The Autotrack service
 /// address and its policy are part of the server: signing in somewhere else must
 /// not keep talking to the old service.
 pub const ACCOUNT_KEYS: &[&str] = &[
@@ -596,11 +596,11 @@ pub const ACCOUNT_KEYS: &[&str] = &[
     "nudged",
 ];
 
-/// Settings learned from an Ira service. Kept only while they belong to the service of
+/// Settings learned from an Autotrack service. Kept only while they belong to the service of
 /// the server the user is signed in to.
 const SERVICE_KEYS: &[&str] = &["ai_url", "ai_policy", "ai_hints", "ai_hints_etag"];
 
-/// Drops the policy and hints of another server's Ira service (e.g. a test server used
+/// Drops the policy and hints of another server's Autotrack service (e.g. a test server used
 /// before switching to production with an older version). Returns whether it did.
 pub fn forget_other_service(c: &Connection, expected: Option<&str>) -> rusqlite::Result<bool> {
     let stored = kv_get(c, "ai_url");
@@ -1411,11 +1411,11 @@ mod tests {
     #[test]
     fn another_servers_service_settings_are_dropped() {
         let c = mem();
-        let prod = Some("https://tracker.aasnatech.com/ira");
+        let prod = Some("https://tracker.aasnatech.com/autotrack");
         // Nothing stored: nothing to do.
         assert!(!forget_other_service(&c, prod).unwrap());
         // Same service: kept.
-        kv_set(&c, "ai_url", "https://tracker.aasnatech.com/ira").unwrap();
+        kv_set(&c, "ai_url", "https://tracker.aasnatech.com/autotrack").unwrap();
         kv_set(&c, "ai_policy", "{}").unwrap();
         assert!(!forget_other_service(&c, prod).unwrap());
         assert!(kv_get(&c, "ai_policy").is_some());
@@ -1431,12 +1431,12 @@ mod tests {
         }
         assert!(kv_get(&c, "base_url").is_some(), "the sign-in stays");
         // Signed out (no server): any stored service is stale.
-        kv_set(&c, "ai_url", "https://tracker.aasnatech.com/ira").unwrap();
+        kv_set(&c, "ai_url", "https://tracker.aasnatech.com/autotrack").unwrap();
         assert!(forget_other_service(&c, None).unwrap());
     }
 
     #[test]
-    fn sign_out_forgets_the_server_and_its_ira_service() {
+    fn sign_out_forgets_the_server_and_its_autotrack() {
         let mut c = mem();
         for k in ACCOUNT_KEYS {
             kv_set(&c, k, "x").unwrap();
@@ -1468,13 +1468,13 @@ mod tests {
 }
 
 /// Upgrade check on a copy of a real database:
-/// `IRA_DB_COPY=/path/to/copy/tracker.db cargo test upgrade_copy -- --ignored --nocapture`
+/// `TIMEPILOT_DB_COPY=/path/to/copy/tracker.db cargo test upgrade_copy -- --ignored --nocapture`
 #[cfg(test)]
 mod upgrade_check {
     #[test]
     #[ignore]
     fn upgrade_copy() {
-        let path = std::env::var("IRA_DB_COPY").expect("set IRA_DB_COPY");
+        let path = std::env::var("TIMEPILOT_DB_COPY").expect("set TIMEPILOT_DB_COPY");
         let c = super::open(std::path::Path::new(&path)).expect("open + migrate");
         let v: i64 = c
             .query_row("PRAGMA user_version", [], |r| r.get(0))

@@ -9,10 +9,10 @@ import httpx2
 import pytest
 from fastapi.testclient import TestClient
 
-from ira_service.config import Settings
-from ira_service.main import create_app
-from ira_service.solidtime import Solidtime
-from ira_service.store import Store
+from autotrack.config import Settings
+from autotrack.main import create_app
+from autotrack.solidtime import Solidtime
+from autotrack.store import Store
 
 ORG = "11111111-1111-1111-1111-111111111111"
 OTHER_ORG = "99999999-9999-9999-9999-999999999999"
@@ -50,7 +50,7 @@ class FakeSolidtime:
                 200,
                 json={
                     "data": [
-                        {**member, "organization": {"id": ORG, "name": "Ira"}},
+                        {**member, "organization": {"id": ORG, "name": "Acme"}},
                         {
                             "id": "m-personal",
                             "role": "owner",
@@ -132,7 +132,7 @@ class FakeClaude:
 
 
 def settings(tmp_path, **over) -> Settings:
-    base = {"SOLIDTIME_URL": "http://solidtime.test", "IRA_DB_PATH": str(tmp_path / "t.db")}
+    base = {"SOLIDTIME_URL": "http://solidtime.test", "TIMEPILOT_DB_PATH": str(tmp_path / "t.db")}
     base.update(over)
     return Settings.from_env(base)
 
@@ -169,7 +169,7 @@ def client(make_client):
 
 
 def h(token=ENGINEER, org=ORG) -> dict:
-    return {"Authorization": f"Bearer {token}", "X-Ira-Org": org}
+    return {"Authorization": f"Bearer {token}", "X-TimePilot-Org": org}
 
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 2000

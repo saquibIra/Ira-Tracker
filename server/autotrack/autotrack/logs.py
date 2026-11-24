@@ -1,6 +1,6 @@
 """Logging for debugging in production.
 
-- JSON lines (IRA_LOG_FORMAT=json) that Google Cloud Logging parses: `severity`,
+- JSON lines (TIMEPILOT_LOG_FORMAT=json) that Google Cloud Logging parses: `severity`,
   `message`, plus structured fields; readable text lines for local runs.
 - Every line written while handling a request carries its `request_id` (also returned
   to the caller in the `X-Request-ID` header, so a widget error can be matched to logs).
@@ -59,7 +59,7 @@ class TextFormatter(logging.Formatter):
 def setup(level: str = "INFO", fmt: str = "text") -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter() if fmt == "json" else TextFormatter())
-    root = logging.getLogger("ira")
+    root = logging.getLogger("autotrack")
     root.handlers = [handler]
     root.setLevel(level.upper())
     root.propagate = False

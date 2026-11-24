@@ -1,10 +1,10 @@
 # Production stack on any Linux server with Docker (see docs/DEPLOY_LINUX.md).
 #
 #   https://$DOMAIN/            solidtime (web app + API for the widget)
-#   https://$DOMAIN/ira/...     Ira service (AI auto-tracking, admin page at /ira/admin/)
+#   https://$DOMAIN/autotrack/...     Autotrack service (AI auto-tracking, admin page at /autotrack/admin/)
 #   https://$DOMAIN/download/   installers for employees
 #
-# Secrets and settings live outside the code in $DATA_DIR (default /opt/ira-data),
+# Secrets and settings live outside the code in $DATA_DIR (default /opt/timepilot-data),
 # created by install.sh. Logs: `docker compose logs`, rotated (10 MB x 5 per container).
 
 x-logging: &logging
@@ -17,7 +17,7 @@ x-solidtime: &solidtime
   image: "solidtime/solidtime:${SOLIDTIME_IMAGE_TAG:-latest}"
   restart: always
   user: "1000:1000"
-  env_file: ["${DATA_DIR:-/opt/ira-data}/laravel.env"]
+  env_file: ["${DATA_DIR:-/opt/timepilot-data}/laravel.env"]
   volumes:
     - solidtime-storage:/var/www/html/storage
   networks: [internal]
@@ -34,7 +34,7 @@ services:
       ACME_EMAIL: "${ACME_EMAIL:?set ACME_EMAIL}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - "${DATA_DIR:-/opt/ira-data}/downloads:/srv/downloads:ro"
+      - "${DATA_DIR:-/opt/timepilot-data}/downloads:/srv/downloads:ro"
       - caddy-data:/data
       - caddy-config:/config
     networks: [internal]
@@ -84,18 +84,18 @@ services:
     networks: [internal]
     logging: *logging
 
-  ira-service:
-    build: ../../server/ira-service
-    image: ira-tracker/ira-service:latest
+  autotrack:
+    build: ../../server/autotrack
+    image: time-pilot/autotrack:latest
     restart: always
-    env_file: ["${DATA_DIR:-/opt/ira-data}/ira-service.env"]
+    env_file: ["${DATA_DIR:-/opt/timepilot-data}/autotrack.env"]
     environment:
       # Same public URL the widgets use (HTTPS through Caddy).
       SOLIDTIME_URL: "https://${DOMAIN}"
-      IRA_DB_PATH: /data/ira-service.db
-      IRA_LOG_FORMAT: json
+      TIMEPILOT_DB_PATH: /data/autotrack.db
+      TIMEPILOT_LOG_FORMAT: json
     volumes:
-      - ira-data:/data
+      - timepilot-data:/data
     networks: [internal]
     depends_on: [app]
     logging: *logging
@@ -106,6 +106,6 @@ networks:
 volumes:
   solidtime-storage:
   database-storage:
-  ira-data:
+  timepilot-data:
   caddy-data:
   caddy-config:

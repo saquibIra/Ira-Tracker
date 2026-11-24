@@ -287,7 +287,7 @@ pub fn delete_entry(app: AppHandle, local_id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// W8 Submit: only when nothing needs review. Recorded on the Ira service so leads can
+/// W8 Submit: only when nothing needs review. Recorded on the Autotrack service so leads can
 /// see who submitted.
 #[tauri::command]
 pub async fn submit_day(app: AppHandle, offset: i64) -> Result<(), String> {
@@ -306,7 +306,7 @@ pub async fn submit_day(app: AppHandle, offset: i64) -> Result<(), String> {
         .unwrap()
         .service
         .clone()
-        .ok_or("Set the Ira service address in Auto-tracking settings first")?;
+        .ok_or("Set the Autotrack service address in Auto-tracking settings first")?;
     ai::Service::new(&st.http, &base, &cfg.token, &cfg.org)
         .submit_day(&view.date, view.total_secs, view.entries.len() as i64)
         .await
@@ -357,7 +357,7 @@ pub fn maybe_nudge(app: &AppHandle) {
     }
     let (w, h) = (380.0, 120.0);
     let mut b = WebviewWindowBuilder::new(app, NUDGE, WebviewUrl::App("index.html".into()))
-        .title("Ira Tracker – Review your day")
+        .title("Time Pilot – Review your day")
         .inner_size(w, h)
         .resizable(false)
         .decorations(false)

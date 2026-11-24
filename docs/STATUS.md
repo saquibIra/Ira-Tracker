@@ -10,14 +10,14 @@ Legend: ✅ done · 🟡 partial · ⬜ not started · ⏭ later phase
 
 | ID | Requirement | Pri | Status | Where / notes |
 |----|-------------|-----|--------|---------------|
-| W1 | Sign in once with personal API token; token in OS keychain | Must | ✅ | `lib.rs` `sign_in`; keychain service `com.ira.tracker`. HTTPS enforced except localhost (`input.rs`) |
+| W1 | Sign in once with personal API token; token in OS keychain | Must | ✅ | `lib.rs` `sign_in`; keychain service `com.timepilot.desktop`. HTTPS enforced except localhost (`input.rs`) |
 | W2 | Tray icon shows running/stopped; project short name + elapsed on hover | Must | ✅ | `tray_icon`, `update_tooltip` |
 | W3 | Tray lists 5 most recent project/task pairs; one click switches | Must | ✅ | `refresh_tray`, `db::recent` |
 | W4 | Global hotkey (Cmd/Ctrl+Shift+T) opens fuzzy quick switcher over assigned projects/tasks | Must | ✅ | Lists what solidtime returns for the user: for employees, their projects (+ public ones); admins see all |
 | W5 | Optional one-line description, editable while running | Must | ✅ | Single line, max 500 chars (`input::description`) |
 | W6 | Idle 10 min (configurable) → Keep / Discard / Assign | Must | ✅ | `idle.rs`; threshold from `idle_minutes` setting (default 10). Needs manual test on device |
 | W7 | Screen lock and sleep treated as idle; same prompt | Must | ✅ | Lock = no input; sleep = wall-clock jump. Needs manual test on device |
-| W8 | End-of-day review at 18:30: blocks, gaps, edit, Submit | Must | ✅ | `review.rs`: day view (blocks + gaps ≥ 5 min, screenshots), reassign/describe/delete, edit times, split, Submit (blocked while "Needs review" blocks remain) stored on the Ira service; reminder toast at `review_at` (non-focus, 8 s). Needs manual test on device |
+| W8 | End-of-day review at 18:30: blocks, gaps, edit, Submit | Must | ✅ | `review.rs`: day view (blocks + gaps ≥ 5 min, screenshots), reassign/describe/delete, edit times, split, Submit (blocked while "Needs review" blocks remain) stored on the Autotrack service; reminder toast at `review_at` (non-focus, 8 s). Needs manual test on device |
 | W9 | Offline queue; no loss on crash/reboot | Must | ✅ | SQLite WAL + `synchronous=FULL`; duplicate-safe creates (`create_attempted` + lookup) |
 | W10 | Start/stop/switch instant locally; async sync | Must | ✅ | All actions write SQLite first |
 | W11 | Reminder if no timer for 30 min in work hours (max 3/day) | Should | ⬜ | After W8 |
@@ -33,15 +33,15 @@ Legend: ✅ done · 🟡 partial · ⬜ not started · ⏭ later phase
 | AT1 | Opt-in with a consent screen explaining what is captured, when, where it goes and what is kept | ✅ | `auto` window, `CONSENT_VERSION` (v3: names the server's AI provider, shows the server's live policy); consent and learned data are cleared on sign-out |
 | AT2 | Timer follows the work without manual switching; hysteresis, backdated switches; unsure time → "Needs review" | ✅ | `auto.rs` `Engine` (unit-tested). Defaults: switch after 2 min, review below 0.6 confidence |
 | AT3 | Cheap signals first: front window → learned cache → admin keywords → AI | ✅ | Window checked every 20 s while active; AI at most once per capture interval (default 5 min) |
-| AT4 | Screenshots: visible to the engineer, never stored on the server | ✅ | Changed 19 Nov 2026 (consent v2): one per capture interval while tracking, kept only on the engineer's computer for 3 days (`IRA_KEEP_SCREENSHOTS_DAYS`, 0 = none) and shown in the day review; sent to the service only for AI classification; the service stores no image, title or token |
+| AT4 | Screenshots: visible to the engineer, never stored on the server | ✅ | Changed 19 Nov 2026 (consent v2): one per capture interval while tracking, kept only on the engineer's computer for 3 days (`TIMEPILOT_KEEP_SCREENSHOTS_DAYS`, 0 = none) and shown in the day review; sent to the service only for AI classification; the service stores no image, title or token |
 | AT9 | Review shows the screen and the project; fix project and times | ✅ | Thumbnails per block (orange border = screenshot points to another project), full viewer with how the project was decided, split at a screenshot, edit start/end with the neighbouring block following |
-| AT5 | Cheap but accurate, configurable model | ✅ | Claude Haiku 5.5, re-checked by Claude Opus 5.5 below 0.7 confidence; models, thresholds, effort via env (`server/ira-service/.env.example`) |
+| AT5 | Cheap but accurate, configurable model | ✅ | Claude Haiku 5.5, re-checked by Claude Opus 5.5 below 0.7 confidence; models, thresholds, effort via env (`server/autotrack/.env.example`) |
 | AT6 | Private time: pause, excluded apps | ✅ | Tray: Pause 30 min / 1 h / until midnight (stops the timer); excluded apps (password managers, personal messengers) never captured. Work hours removed 24 Nov 2026 (people track whenever they work; consent v4) |
 | AT7 | Manual override always wins; corrections teach the system | ✅ | Manual start/stop pins auto-switching for 30 min. Review corrections teach the cache (30 days), and AI answers are reused for 4 h, both only for specific window titles (generic ones like "Zoom Meeting" are re-checked) |
-| AT8 | Admin: project descriptions/keywords, AI usage and cost, day submissions | ✅ | `/admin` on the Ira service (owner/admin role in solidtime) |
+| AT8 | Admin: project descriptions/keywords, AI usage and cost, day submissions | ✅ | `/admin` on the Autotrack service (owner/admin role in solidtime) |
 | AT10 | Production on Google Cloud, Gemini, logs, easy distribution | 🟡 | Deploy kit `deploy/gcp/` (one VM, HTTPS, Vertex AI Gemini via service account, Cloud Logging, daily snapshots). Structured service logs with request ids; app log file. Installers: `scripts/release-mac.sh`, Windows via Actions. Pending: running it (needs project, domain), Apple Developer ID for warning-free Mac install, auto-update (W15) |
 
-Measured/verified: Python service 51 tests; Rust 54 unit tests; UI 15 tests; live macOS window read and capture path (permission-denied path returns cleanly); Windows capture/context code type-checked and clippy-clean for `x86_64-pc-windows-msvc`; end-to-end against local solidtime (auth, org isolation, role checks, project visibility, hints + ETag, classify, day submission). Live Anthropic API reached with the configured key (19 Nov): the account has no credit yet, so the service reports "credit balance too low" and pauses AI calls (verified). Live Gemini on production (24 Nov): `gemini-3.5-flash-lite` classified a test screenshot and a title-only request through `https://<domain>/ira/v1/classify` to the right projects (1–3 s per call). Not yet: the accuracy check on labelled screenshots, Windows device run.
+Measured/verified: Python service 51 tests; Rust 54 unit tests; UI 15 tests; live macOS window read and capture path (permission-denied path returns cleanly); Windows capture/context code type-checked and clippy-clean for `x86_64-pc-windows-msvc`; end-to-end against local solidtime (auth, org isolation, role checks, project visibility, hints + ETag, classify, day submission). Live Anthropic API reached with the configured key (19 Nov): the account has no credit yet, so the service reports "credit balance too low" and pauses AI calls (verified). Live Gemini on production (24 Nov): `gemini-3.5-flash-lite` classified a test screenshot and a title-only request through `https://<domain>/autotrack/v1/classify` to the right projects (1–3 s per call). Not yet: the accuracy check on labelled screenshots, Windows device run.
 
 Platforms: the document requires **macOS and Windows** (acceptance criteria) and lists Linux as an open question. One Tauri codebase; CI builds and tests on macOS and Windows. Windows has not yet been run by hand.
 
@@ -67,8 +67,8 @@ Platforms: the document requires **macOS and Windows** (acceptance criteria) and
 | solidtime self-hosted in Docker (Phase 0) | ✅ local; bound to 127.0.0.1. Azure VM + HTTPS (Caddy/Nginx) + nightly backup ⬜ |
 | Master data: customers → projects → tasks, billable flags, rates, internal projects | ✅ demo data via `server/seed/seed_demo.py`; real data ⬜ |
 | Phase 0 pilot with official solidtime desktop app | ⬜ needs the desktop OAuth client (see server/README.md) |
-| Ira service (FastAPI, `server/ira-service`): auto-tracking classify, policy, hints admin page, usage/cost log, day submissions | ✅ local (port 8010, bound to 127.0.0.1 in Docker). Azure + HTTPS ⬜ |
-| Reconciliation jobs R1–R6, period lock, reports, notifications (to be added to the Ira service) | ⬜ |
+| Autotrack service (FastAPI, `server/autotrack`): auto-tracking classify, policy, hints admin page, usage/cost log, day submissions | ✅ local (port 8010, bound to 127.0.0.1 in Docker). Azure + HTTPS ⬜ |
+| Reconciliation jobs R1–R6, period lock, reports, notifications (to be added to the Autotrack service) | ⬜ |
 
 ## Reconciliation rules
 
@@ -120,7 +120,7 @@ Platforms: the document requires **macOS and Windows** (acceptance criteria) and
 
 ## Security review — auto-tracking (19 Nov 2026)
 
-- Anthropic key only on the Ira service; widgets authenticate with their own solidtime token, verified against solidtime (cached 10 min by token hash; never stored or logged).
+- Anthropic key only on the Autotrack service; widgets authenticate with their own solidtime token, verified against solidtime (cached 10 min by token hash; never stored or logged).
 - Every request is scoped to the caller's organization membership; project lists come from solidtime with the caller's token, so an engineer can only be classified onto projects they can see. Admin endpoints require `owner`/`admin`.
 - Model output is untrusted: only project references we offered are accepted (prompt injection via on-screen text cannot pick another project); confidence clamped; activity notes sanitized; non-work results never carry details.
 - Screenshots: grayscale, one display, ≤ 900 KB, JPEG magic checked; requests that could spill to a temp file are rejected (411/413); per-user rate limit (429). No image, title or token in any table (tested).

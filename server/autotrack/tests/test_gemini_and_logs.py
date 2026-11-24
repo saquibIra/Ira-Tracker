@@ -6,9 +6,9 @@ from types import SimpleNamespace
 import pytest
 from google.genai import errors
 
-from ira_service import logs
-from ira_service.classify import AiAccountError, AiUnavailable, Catalog, Classifier, GeminiBackend, Project
-from ira_service.config import ConfigError, Settings
+from autotrack import logs
+from autotrack.classify import AiAccountError, AiUnavailable, Catalog, Classifier, GeminiBackend, Project
+from autotrack.config import ConfigError, Settings
 
 from .conftest import JPEG, h
 
@@ -51,9 +51,9 @@ class FakeGemini:
 def gemini_settings(tmp_path, **over):
     env = {
         "SOLIDTIME_URL": "http://solidtime.test",
-        "IRA_DB_PATH": str(tmp_path / "t.db"),
-        "IRA_AI_PROVIDER": "gemini",
-        "GOOGLE_CLOUD_PROJECT": "ira-test",
+        "TIMEPILOT_DB_PATH": str(tmp_path / "t.db"),
+        "TIMEPILOT_AI_PROVIDER": "gemini",
+        "GOOGLE_CLOUD_PROJECT": "timepilot-test",
     }
     env.update(over)
     return Settings.from_env(env)
@@ -66,9 +66,9 @@ def run(coro):
 def test_gemini_defaults_are_flash_lite_then_flash(tmp_path):
     s = gemini_settings(tmp_path)
     assert (s.ai_model, s.ai_escalation_model) == ("gemini-3.5-flash-lite", "gemini-3.8-flash")
-    assert s.gemini_location == "global" and s.gcp_project == "ira-test"
+    assert s.gemini_location == "global" and s.gcp_project == "timepilot-test"
     with pytest.raises(ConfigError):
-        gemini_settings(tmp_path, IRA_AI_PROVIDER="openai")
+        gemini_settings(tmp_path, TIMEPILOT_AI_PROVIDER="openai")
 
 
 def test_gemini_answer_is_validated_and_usage_counts_thinking(tmp_path):
@@ -104,7 +104,7 @@ def test_gemini_safety_block_and_bad_reference_become_unclear(tmp_path):
     g = FakeGemini()
     g.answer(blocked="SAFETY")
     g.answer(ref="P99", confidence=1.0)
-    s = gemini_settings(tmp_path, IRA_AI_ESCALATION_MODEL="")
+    s = gemini_settings(tmp_path, TIMEPILOT_AI_ESCALATION_MODEL="")
     b = GeminiBackend(g, s)
     r1 = run(b.ask("m", Catalog.build(PROJECTS), "x", "y", None))
     r2 = run(b.ask("m", Catalog.build(PROJECTS), "x", "y", None))
@@ -125,7 +125,7 @@ def test_gemini_errors_are_classified(tmp_path, code, expected):
 
 
 def test_json_logs_carry_request_id_and_fields():
-    rec = logging.LogRecord("ira", logging.INFO, __file__, 1, "classified", (), None)
+    rec = logging.LogRecord("autotrack", logging.INFO, __file__, 1, "classified", (), None)
     rec.member = "m-1"
     token = logs.request_id.set("abc123def456")
     try:
@@ -138,8 +138,8 @@ def test_json_logs_carry_request_id_and_fields():
 
 def test_requests_get_an_id_and_logs_never_contain_titles(client, claude, caplog):
     claude.answer(ref="P1", confidence=0.95)
-    caplog.set_level(logging.INFO, logger="ira")
-    logging.getLogger("ira").propagate = True  # let caplog see the service's logger
+    caplog.set_level(logging.INFO, logger="autotrack")
+    logging.getLogger("autotrack").propagate = True  # let caplog see the service's logger
     r = client.post(
         "/v1/classify",
         headers={**h(), "X-Request-ID": "widget-req-0001"},

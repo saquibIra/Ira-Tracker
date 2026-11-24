@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Installs or updates Ira Tracker on a Linux server with Docker. Run as root from the
+# Installs or updates Time Pilot on a Linux server with Docker. Run as root from the
 # copied code (deploy.sh does this for you):
 #
 #   sudo DOMAIN=time.example.com ADMIN_EMAIL=you@example.com \
 #        [GEMINI_API_KEY_STDIN=1 (key on the first line of stdin)] [REGISTRATION=on|off|invite-only] \
 #        [REGISTRATION_DOMAINS='example.com,other.com' or '*'] \
-#        /opt/ira-tracker/deploy/linux/install.sh
+#        /opt/time-pilot/deploy/linux/install.sh
 #
-# Safe to re-run: secrets and settings in /opt/ira-data are created once and kept.
+# Safe to re-run: secrets and settings in /opt/timepilot-data are created once and kept.
 # REGISTRATION and REGISTRATION_DOMAINS are remembered in compose.env (default: off).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-DATA="${DATA_DIR:-/opt/ira-data}"
+DATA="${DATA_DIR:-/opt/timepilot-data}"
 REQUESTED_DOMAIN="${DOMAIN:-}"
 REQUESTED_REGISTRATION="${REGISTRATION:-}"
 REQUESTED_REGISTRATION_DOMAINS="${REGISTRATION_DOMAINS:-}"
-log() { echo "[ira-install] $*"; }
+log() { echo "[timepilot-install] $*"; }
 
 # The AI key comes on stdin (deploy.sh), never as GEMINI_API_KEY=... on the sudo command
 # line, which the system log records. Read it before anything else can consume stdin.
@@ -88,8 +88,8 @@ if [ ! -f "$DATA/laravel.env" ]; then
   docker pull -q "solidtime/solidtime:${SOLIDTIME_IMAGE_TAG:-latest}" >/dev/null
   {
     cat <<EOF
-APP_NAME="Ira Tracker"
-VITE_APP_NAME="Ira Tracker"
+APP_NAME="Time Pilot"
+VITE_APP_NAME="Time Pilot"
 APP_ENV="production"
 APP_DEBUG="false"
 APP_URL="https://$DOMAIN"
@@ -107,7 +107,7 @@ DB_USERNAME="$DB_USERNAME"
 DB_PASSWORD="$DB_PASSWORD"
 MAIL_MAILER="log"
 MAIL_FROM_ADDRESS="no-reply@$DOMAIN"
-MAIL_FROM_NAME="Ira Tracker"
+MAIL_FROM_NAME="Time Pilot"
 QUEUE_CONNECTION="database"
 FILESYSTEM_DISK="local"
 PUBLIC_FILESYSTEM_DISK="public"
@@ -133,13 +133,13 @@ write_key() {
     '/^GEMINI_API_KEY=/ { print "GEMINI_API_KEY=" ENVIRON["K"]; next } { print }' "$1" >"$1.new")
   mv "$1.new" "$1"
 }
-if [ ! -f "$DATA/ira-service.env" ]; then
-  log "creating $DATA/ira-service.env"
-  cp "$HERE/ira-service.env.template" "$DATA/ira-service.env"
-  write_key "$DATA/ira-service.env"
+if [ ! -f "$DATA/autotrack.env" ]; then
+  log "creating $DATA/autotrack.env"
+  cp "$HERE/autotrack.env.template" "$DATA/autotrack.env"
+  write_key "$DATA/autotrack.env"
 elif [ -n "${GEMINI_API_KEY:-}" ]; then
   log "updating GEMINI_API_KEY"
-  write_key "$DATA/ira-service.env"
+  write_key "$DATA/autotrack.env"
 fi
 
 cp "$HERE/downloads-index.html" "$DATA/downloads/index.html"
@@ -163,25 +163,25 @@ if [ ! -f "$DATA/.passport-client" ]; then
   touch "$DATA/.passport-client"
 fi
 if [ ! -f "$DATA/admin-credentials.txt" ]; then
-  compose exec -T scheduler php artisan admin:user:create "Ira Admin" "$ADMIN_EMAIL" --verify-email \
+  compose exec -T scheduler php artisan admin:user:create "Time Pilot Admin" "$ADMIN_EMAIL" --verify-email \
     >"$DATA/admin-credentials.txt"
   chmod 600 "$DATA/admin-credentials.txt"
 fi
 
 # 4. Nightly backup at 02:30 (kept 14 days in $DATA/backups)
-cat >/etc/cron.d/ira-tracker-backup <<EOF
+cat >/etc/cron.d/time-pilot-backup <<EOF
 30 2 * * * root $HERE/backup.sh >>$DATA/backups/backup.log 2>&1
 EOF
-chmod 644 /etc/cron.d/ira-tracker-backup
+chmod 644 /etc/cron.d/time-pilot-backup
 
 # 5. Self-registration without email: activate new accounts and add them to the company
 #    (onboard.sh; only while REGISTRATION=on).
 if [ "$REGISTRATION" = on ]; then
   log "self-registration on for: ${REGISTRATION_DOMAINS:-${ADMIN_EMAIL#*@}} (log: $DATA/onboard.log)"
-  echo "* * * * * root $HERE/onboard.sh >>$DATA/onboard.log 2>&1" >/etc/cron.d/ira-tracker-onboard
-  chmod 644 /etc/cron.d/ira-tracker-onboard
+  echo "* * * * * root $HERE/onboard.sh >>$DATA/onboard.log 2>&1" >/etc/cron.d/time-pilot-onboard
+  chmod 644 /etc/cron.d/time-pilot-onboard
 else
-  rm -f /etc/cron.d/ira-tracker-onboard
+  rm -f /etc/cron.d/time-pilot-onboard
 fi
 
 docker image prune -f >/dev/null

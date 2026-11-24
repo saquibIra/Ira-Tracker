@@ -1,20 +1,20 @@
-# Ira Tracker
+# Time Pilot
 
 A lightweight time-tracking system for Ira engineers: a menu-bar/tray widget records which project each engineer works on and for how long, and the server reconciles that time against projects and customers for billing.
 
 - **Time server:** [solidtime](https://www.solidtime.io) (open source, self-hosted in Docker), the system of record.
-- **Widget ("Ira Tracker"):** Tauri 2 tray app (Rust + TypeScript), built here.
-- **Ira service:** Python FastAPI service (`server/ira-service`). It runs AI auto-tracking (Claude classifies which project the screen belongs to), the project hints admin page and day submissions. Reconciliation (allocation checks, gap detection, billing exports) will be added here.
+- **Widget ("Time Pilot"):** Tauri 2 tray app (Rust + TypeScript), built here.
+- **Autotrack service:** Python FastAPI service (`server/autotrack`). It runs AI auto-tracking (Claude classifies which project the screen belongs to), the project hints admin page and day submissions. Reconciliation (allocation checks, gap detection, billing exports) will be added here.
 
 Design principles: *confirm, don't type*; invisible when idle; the timer follows your work automatically; fix it later in an end-of-day review.
 
-**Privacy.** Auto-tracking is opt-in, with a consent screen. It reads the front window's app and title locally. While tracking it takes a small grayscale screenshot every few minutes. Screenshots stay on the engineer's own computer for a few days so they can check and fix their day in the review, and are then deleted. Only when the window title is not enough is a screenshot sent to the Ira service for classification; the server never stores it. No keystrokes or mouse activity are ever captured. Password managers and personal messengers are excluded, and engineers can pause it at any time for private time.
+**Privacy.** Auto-tracking is opt-in, with a consent screen. It reads the front window's app and title locally. While tracking it takes a small grayscale screenshot every few minutes. Screenshots stay on the engineer's own computer for a few days so they can check and fix their day in the review, and are then deleted. Only when the window title is not enough is a screenshot sent to the Autotrack service for classification; the server never stores it. No keystrokes or mouse activity are ever captured. Password managers and personal messengers are excluded, and engineers can pause it at any time for private time.
 
 ## Repository layout
 
 ```
 .
-├── widget/              Tauri tray app (Ira Tracker)
+├── widget/              Tauri tray app (Time Pilot)
 │   ├── src/             TypeScript UI (quick switcher, sign-in)
 │   └── src-tauri/       Rust core: tray, SQLite queue, sync, keychain
 ├── deploy/linux/        Production on any Linux server with Docker (current: client server)
@@ -22,7 +22,7 @@ Design principles: *confirm, don't type*; invisible when idle; the timer follows
 ├── scripts/             Release scripts (Mac installer)
 ├── server/
 │   ├── solidtime/       Docker Compose for self-hosted solidtime
-│   ├── ira-service/     FastAPI: AI auto-tracking, hints admin, day submissions
+│   ├── autotrack/     FastAPI: AI auto-tracking, hints admin, day submissions
 │   └── seed/            Demo data loader
 ├── docs/                Requirements status and decisions
 └── CLAUDE.md            Working notes for Claude Code
@@ -36,16 +36,16 @@ Prerequisites: Docker Desktop, Node 20+, Rust (`rustup`), Xcode command-line too
    ```bash
    cd server/solidtime && docker compose up -d     # http://localhost:8000
    ```
-2. **Ira service** (AI auto-tracking): put your Anthropic API key in `server/ira-service/.env` (copy `.env.example`), then:
+2. **Autotrack service** (AI auto-tracking): put your Anthropic API key in `server/autotrack/.env` (copy `.env.example`), then:
    ```bash
-   cd server/ira-service && uv run --env-file .env uvicorn --factory ira_service.main:create_app --port 8010
+   cd server/autotrack && uv run --env-file .env uvicorn --factory autotrack.main:create_app --port 8010
    ```
-   Admin page: http://localhost:8010/admin (project descriptions and keywords, AI cost, day submissions). Details: [server/ira-service/README.md](server/ira-service/README.md).
+   Admin page: http://localhost:8010/admin (project descriptions and keywords, AI cost, day submissions). Details: [server/autotrack/README.md](server/autotrack/README.md).
 3. **Widget**
    ```bash
    cd widget && npm install && npm run tauri dev
    ```
-   Sign in with a solidtime personal API token (solidtime → Profile → API Tokens). The auto-tracking window opens next: read it and turn it on (for a local server the app uses the Ira service at `http://localhost:8010`). On macOS, allow Ira Tracker under System Settings → Privacy & Security → Screen Recording, then restart the app. **⌘⇧T** (Cmd+Shift+T) still switches projects by hand.
+   Sign in with a solidtime personal API token (solidtime → Profile → API Tokens). The auto-tracking window opens next: read it and turn it on (for a local server the app uses the Autotrack service at `http://localhost:8010`). On macOS, allow Time Pilot under System Settings → Privacy & Security → Screen Recording, then restart the app. **⌘⇧T** (Cmd+Shift+T) still switches projects by hand.
 
 Developer checklist: [widget/README.md](widget/README.md). Full manual test plan (engineer + admin): [docs/MANUAL_TEST_PLAN.md](docs/MANUAL_TEST_PLAN.md).
 
@@ -59,7 +59,7 @@ Developer checklist: [widget/README.md](widget/README.md). Full manual test plan
 | Widget: end-of-day review with Submit (W8) | Done |
 | Widget: reminders (W11) | Next |
 | Widget: signed builds, auto-update (W15) | Needs code-signing certificates |
-| Reconciliation (R1–R6, reports) in the Ira service | Planned |
+| Reconciliation (R1–R6, reports) in the Autotrack service | Planned |
 | Ticket keys into descriptions, calendar (W13, W14) | Phase 2 |
 
 Full requirement-by-requirement check: [docs/STATUS.md](docs/STATUS.md).
@@ -71,7 +71,7 @@ Full requirement-by-requirement check: [docs/STATUS.md](docs/STATUS.md).
 ```bash
 cd widget && npm test                      # UI unit tests
 cd widget/src-tauri && cargo test          # Rust unit tests
-cd server/ira-service && uv run pytest     # Ira service tests (Claude and solidtime are faked)
+cd server/autotrack && uv run pytest     # Autotrack service tests (Claude and solidtime are faked)
 ```
 
 CI (`.github/workflows/ci.yml`) runs formatting, lint, tests and dependency audits on macOS and Windows for every push and pull request.

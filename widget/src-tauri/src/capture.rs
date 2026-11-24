@@ -359,8 +359,8 @@ mod tests {
 /// Manual check on a real machine: `cargo test live_ -- --ignored --nocapture`.
 /// Prints what the widget would see; the screenshot stays in memory.
 ///
-/// Preview (testing only, never done by the app): set `IRA_PREVIEW=/path/file.jpg` to
-/// save the exact image the app would send, and `IRA_PREVIEW_DELAY=5` to get time to
+/// Preview (testing only, never done by the app): set `TIMEPILOT_PREVIEW=/path/file.jpg` to
+/// save the exact image the app would send, and `TIMEPILOT_PREVIEW_DELAY=5` to get time to
 /// bring another window to the front first. The terminal running this needs the
 /// Screen Recording permission.
 #[cfg(test)]
@@ -368,7 +368,7 @@ mod live {
     #[test]
     #[ignore]
     fn live_context_and_capture() {
-        let delay = std::env::var("IRA_PREVIEW_DELAY")
+        let delay = std::env::var("TIMEPILOT_PREVIEW_DELAY")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(0u64);
@@ -388,7 +388,7 @@ mod live {
                     shot.thumb.len() / 1024,
                     started.elapsed()
                 );
-                if let Ok(path) = std::env::var("IRA_PREVIEW") {
+                if let Ok(path) = std::env::var("TIMEPILOT_PREVIEW") {
                     std::fs::write(&path, &shot.jpeg).expect("write preview");
                     println!("preview saved to {path} (delete it when done)");
                 }

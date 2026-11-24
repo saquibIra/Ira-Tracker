@@ -237,9 +237,31 @@ export function decidedBy(c: CaptureView): string {
   }
 }
 
-/** The company server set at build time (VITE_IRA_SERVER_URL), else local development. */
+/** The company server set at build time (VITE_TIMEPILOT_SERVER_URL), else local development. */
 export const defaultServer = (configured: string | undefined): string =>
   (configured ?? "").trim().replace(/\/+$/, "") || "http://localhost:8000";
+
+/** What the auto-tracking window says after "I agree", and whether it can close: it
+ * stays open only when something still needs the user (AI missing, Screen Recording). */
+export function afterTurnOn(v: { server_ready: boolean; permission: string }): {
+  text: string;
+  error: boolean;
+  close: boolean;
+} {
+  if (!v.server_ready)
+    return {
+      text: "Auto-tracking is on, but AI is not configured on the server yet (keywords only).",
+      error: true,
+      close: false,
+    };
+  if (v.permission === "denied")
+    return {
+      text: "Auto-tracking is on. Allow Screen Recording below so it can use screenshots.",
+      error: false,
+      close: false,
+    };
+  return { text: "Auto-tracking is on.", error: false, close: true };
+}
 
 /** How the consent screen names the AI the server uses: "an AI (Google Gemini)". */
 export function aiName(provider: string | null | undefined): string {

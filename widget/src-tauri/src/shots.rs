@@ -1,5 +1,5 @@
 //! Screenshots kept on this computer so the engineer can check their day in the
-//! review. Never uploaded for storage (the Ira service only sees a screenshot while
+//! review. Never uploaded for storage (the Autotrack service only sees a screenshot while
 //! classifying it). Files live in `<app data>/captures/` with owner-only permissions
 //! and are deleted after `keep_screenshots_days`, on sign-out, or by the user.
 
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn files_are_private_and_readable_as_data_urls() {
-        let tmp = std::env::temp_dir().join(format!("ira-shots-{}", uuid::Uuid::new_v4()));
+        let tmp = std::env::temp_dir().join(format!("timepilot-shots-{}", uuid::Uuid::new_v4()));
         let d = ensure_dir(&tmp).unwrap();
         assert!(d.is_dir());
         let id = uuid::Uuid::new_v4().to_string();

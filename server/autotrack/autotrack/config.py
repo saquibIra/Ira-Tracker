@@ -79,7 +79,7 @@ def _bool(env: Mapping[str, str], name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     solidtime_url: str
-    db_path: str = "ira-service.db"
+    db_path: str = "autotrack.db"
 
     # Claude: the primary model classifies every capture; the escalation model
     # re-checks only results below `ai_escalate_below` ("" turns escalation off).
@@ -127,32 +127,32 @@ class Settings:
         if not re.fullmatch(r"https?://[^\s/?#]+(/[^\s?#]*)?", url):
             raise ConfigError("SOLIDTIME_URL must be an http(s) URL, e.g. http://localhost:8000")
 
-        effort = env.get("IRA_AI_EFFORT", "").strip() or "low"
+        effort = env.get("TIMEPILOT_AI_EFFORT", "").strip() or "low"
         if effort not in EFFORTS:
-            raise ConfigError(f"IRA_AI_EFFORT must be one of {', '.join(EFFORTS)}")
+            raise ConfigError(f"TIMEPILOT_AI_EFFORT must be one of {', '.join(EFFORTS)}")
 
-        provider = env.get("IRA_AI_PROVIDER", "").strip().lower() or cls.ai_provider
+        provider = env.get("TIMEPILOT_AI_PROVIDER", "").strip().lower() or cls.ai_provider
         if provider not in PROVIDERS:
-            raise ConfigError(f"IRA_AI_PROVIDER must be one of {', '.join(PROVIDERS)}")
+            raise ConfigError(f"TIMEPILOT_AI_PROVIDER must be one of {', '.join(PROVIDERS)}")
         default_model, default_escalation = DEFAULT_MODELS[provider]
-        model = env.get("IRA_AI_MODEL", "").strip() or default_model
-        escalation = env.get("IRA_AI_ESCALATION_MODEL")
+        model = env.get("TIMEPILOT_AI_MODEL", "").strip() or default_model
+        escalation = env.get("TIMEPILOT_AI_ESCALATION_MODEL")
         escalation = default_escalation if escalation is None else escalation.strip()
 
-        log_level = env.get("IRA_LOG_LEVEL", "").strip().upper() or cls.log_level
+        log_level = env.get("TIMEPILOT_LOG_LEVEL", "").strip().upper() or cls.log_level
         if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
-            raise ConfigError("IRA_LOG_LEVEL must be DEBUG, INFO, WARNING or ERROR")
-        log_format = env.get("IRA_LOG_FORMAT", "").strip().lower() or cls.log_format
+            raise ConfigError("TIMEPILOT_LOG_LEVEL must be DEBUG, INFO, WARNING or ERROR")
+        log_format = env.get("TIMEPILOT_LOG_FORMAT", "").strip().lower() or cls.log_format
         if log_format not in ("text", "json"):
-            raise ConfigError("IRA_LOG_FORMAT must be text or json")
-        location = env.get("IRA_GEMINI_LOCATION", "").strip() or cls.gemini_location
+            raise ConfigError("TIMEPILOT_LOG_FORMAT must be text or json")
+        location = env.get("TIMEPILOT_GEMINI_LOCATION", "").strip() or cls.gemini_location
         if not re.fullmatch(r"[a-z0-9-]{2,40}", location):
-            raise ConfigError("IRA_GEMINI_LOCATION must be a region like global or asia-south1")
-        for name, value in (("IRA_AI_MODEL", model), ("IRA_AI_ESCALATION_MODEL", escalation)):
+            raise ConfigError("TIMEPILOT_GEMINI_LOCATION must be a region like global or asia-south1")
+        for name, value in (("TIMEPILOT_AI_MODEL", model), ("TIMEPILOT_AI_ESCALATION_MODEL", escalation)):
             if value and not re.fullmatch(r"[a-z0-9][a-z0-9.\-]{2,63}", value):
                 raise ConfigError(f"{name} is not a valid model id")
 
-        excluded_raw = env.get("IRA_EXCLUDED_APPS")
+        excluded_raw = env.get("TIMEPILOT_EXCLUDED_APPS")
         excluded = (
             DEFAULT_EXCLUDED_APPS
             if excluded_raw is None
@@ -161,7 +161,7 @@ class Settings:
 
         return cls(
             solidtime_url=url,
-            db_path=env.get("IRA_DB_PATH", "").strip() or cls.db_path,
+            db_path=env.get("TIMEPILOT_DB_PATH", "").strip() or cls.db_path,
             ai_provider=provider,
             gcp_project=env.get("GOOGLE_CLOUD_PROJECT", "").strip(),
             gemini_location=location,
@@ -169,24 +169,28 @@ class Settings:
             log_format=log_format,
             ai_model=model,
             ai_escalation_model=escalation,
-            ai_escalate_below=_float(env, "IRA_AI_ESCALATE_BELOW", cls.ai_escalate_below, 0, 1),
+            ai_escalate_below=_float(env, "TIMEPILOT_AI_ESCALATE_BELOW", cls.ai_escalate_below, 0, 1),
             ai_effort=effort,
-            ai_timeout_secs=_float(env, "IRA_AI_TIMEOUT_SECS", cls.ai_timeout_secs, 2, 120),
-            ai_refusal_fallback=_bool(env, "IRA_AI_REFUSAL_FALLBACK", cls.ai_refusal_fallback),
-            review_below=_float(env, "IRA_REVIEW_BELOW", cls.review_below, 0, 1),
-            capture_interval_secs=_int(env, "IRA_CAPTURE_INTERVAL_SECS", cls.capture_interval_secs, 30, 3600),
-            min_switch_secs=_int(env, "IRA_MIN_SWITCH_SECS", cls.min_switch_secs, 0, 1800),
-            pin_secs=_int(env, "IRA_PIN_SECS", cls.pin_secs, 0, 8 * 3600),
-            unresolved_review_secs=_int(
-                env, "IRA_UNRESOLVED_REVIEW_SECS", cls.unresolved_review_secs, 60, 8 * 3600
+            ai_timeout_secs=_float(env, "TIMEPILOT_AI_TIMEOUT_SECS", cls.ai_timeout_secs, 2, 120),
+            ai_refusal_fallback=_bool(env, "TIMEPILOT_AI_REFUSAL_FALLBACK", cls.ai_refusal_fallback),
+            review_below=_float(env, "TIMEPILOT_REVIEW_BELOW", cls.review_below, 0, 1),
+            capture_interval_secs=_int(
+                env, "TIMEPILOT_CAPTURE_INTERVAL_SECS", cls.capture_interval_secs, 30, 3600
             ),
-            capture_max_px=_int(env, "IRA_CAPTURE_MAX_PX", cls.capture_max_px, 640, 2576),
-            capture_quality=_int(env, "IRA_CAPTURE_QUALITY", cls.capture_quality, 20, 95),
-            review_at=_hhmm(env, "IRA_REVIEW_AT", cls.review_at),
+            min_switch_secs=_int(env, "TIMEPILOT_MIN_SWITCH_SECS", cls.min_switch_secs, 0, 1800),
+            pin_secs=_int(env, "TIMEPILOT_PIN_SECS", cls.pin_secs, 0, 8 * 3600),
+            unresolved_review_secs=_int(
+                env, "TIMEPILOT_UNRESOLVED_REVIEW_SECS", cls.unresolved_review_secs, 60, 8 * 3600
+            ),
+            capture_max_px=_int(env, "TIMEPILOT_CAPTURE_MAX_PX", cls.capture_max_px, 640, 2576),
+            capture_quality=_int(env, "TIMEPILOT_CAPTURE_QUALITY", cls.capture_quality, 20, 95),
+            review_at=_hhmm(env, "TIMEPILOT_REVIEW_AT", cls.review_at),
             excluded_apps=excluded,
-            keep_screenshots_days=_int(env, "IRA_KEEP_SCREENSHOTS_DAYS", cls.keep_screenshots_days, 0, 14),
-            rate_limit_per_hour=_int(env, "IRA_RATE_LIMIT_PER_HOUR", cls.rate_limit_per_hour, 1, 3600),
-            max_image_bytes=_int(env, "IRA_MAX_IMAGE_BYTES", cls.max_image_bytes, 10_000, 900_000),
+            keep_screenshots_days=_int(
+                env, "TIMEPILOT_KEEP_SCREENSHOTS_DAYS", cls.keep_screenshots_days, 0, 14
+            ),
+            rate_limit_per_hour=_int(env, "TIMEPILOT_RATE_LIMIT_PER_HOUR", cls.rate_limit_per_hour, 1, 3600),
+            max_image_bytes=_int(env, "TIMEPILOT_MAX_IMAGE_BYTES", cls.max_image_bytes, 10_000, 900_000),
         )
 
     def summary(self) -> dict:

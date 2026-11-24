@@ -1,5 +1,5 @@
 # Windows installer for employees. Run from GitHub → Actions → "Release (Windows)" →
-# Run workflow (or push a tag v1.2.3). Set the repository variable IRA_SERVER_URL
+# Run workflow (or push a tag v1.2.3). Set the repository variable TIMEPILOT_SERVER_URL
 # (Settings → Secrets and variables → Actions → Variables) to the company server, e.g.
 # https://time.example.com, so the installer is pre-configured.
 name: Release (Windows)
@@ -32,18 +32,18 @@ jobs:
       - run: npm ci
       - name: Build installer
         env:
-          VITE_IRA_SERVER_URL: ${{ vars.IRA_SERVER_URL || 'https://tracker.aasnatech.com' }}
+          VITE_TIMEPILOT_SERVER_URL: ${{ vars.TIMEPILOT_SERVER_URL || 'https://tracker.aasnatech.com' }}
         run: npm run tauri build -- --bundles nsis
       - name: Name the installer
         shell: bash
-        run: cp src-tauri/target/release/bundle/nsis/*-setup.exe IraTracker-windows.exe
+        run: cp src-tauri/target/release/bundle/nsis/*-setup.exe TimePilot-windows.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: IraTracker-windows
-          path: widget/IraTracker-windows.exe
+          name: TimePilot-windows
+          path: widget/TimePilot-windows.exe
           if-no-files-found: error
       - name: Attach to the GitHub release (tag builds)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: widget/IraTracker-windows.exe
+          files: widget/TimePilot-windows.exe

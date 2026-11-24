@@ -1,6 +1,6 @@
-"""Ira service: AI auto-tracking support for the Ira Tracker widget.
+"""Autotrack service: AI auto-tracking support for the Time Pilot widget.
 
-Run: uv run --env-file .env uvicorn --factory ira_service.main:create_app --port 8010 --no-access-log
+Run: uv run --env-file .env uvicorn --factory autotrack.main:create_app --port 8010 --no-access-log
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from .config import Settings
 from .solidtime import Solidtime, SolidtimeError, Unauthorized, Unavailable
 from .store import Store
 
-log = logging.getLogger("ira")
+log = logging.getLogger("autotrack")
 
 UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 DAY_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -106,7 +106,9 @@ def create_app(
         await solidtime.aclose()
         store.close()
 
-    app = FastAPI(title="Ira service", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(
+        title="Autotrack service", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
+    )
 
     @app.middleware("http")
     async def request_log(request: Request, call_next):
@@ -150,9 +152,9 @@ def create_app(
         token = header[7:].strip()
         if not token or len(token) > 4096:
             raise HTTPException(401, "Invalid token")
-        org = request.headers.get("x-ira-org", "")
+        org = request.headers.get("x-timepilot-org", "")
         if not UUID_RE.fullmatch(org):
-            raise HTTPException(400, "Missing or invalid X-Ira-Org header")
+            raise HTTPException(400, "Missing or invalid X-TimePilot-Org header")
         try:
             c = await auth.caller(token, org)
         except Unauthorized:
@@ -369,11 +371,11 @@ def create_app(
         log.info("day submitted", extra={"member": c.member_id, "day": day, "total_secs": body.total_secs})
         return {"ok": True}
 
-    # ---------- admin page (works at / and behind a path prefix such as /ira) ----------
+    # ---------- admin page (works at / and behind a path prefix such as /autotrack) ----------
 
     @app.get("/admin")
     async def admin_redirect():
-        # Relative redirect so it also works behind the /ira prefix.
+        # Relative redirect so it also works behind the /autotrack prefix.
         return RedirectResponse("admin/", status_code=307)
 
     @app.get("/admin/")

@@ -5,9 +5,9 @@
 {$DOMAIN} {
 	encode zstd gzip
 
-	# Ira service (the prefix is removed before forwarding).
-	handle_path /ira/* {
-		reverse_proxy ira-service:8010
+	# Autotrack service (the prefix is removed before forwarding).
+	handle_path /autotrack/* {
+		reverse_proxy autotrack:8010
 	}
 
 	# Installers and update manifests for employees.

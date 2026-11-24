@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploys (or updates) Ira Tracker on a Linux server from this Mac, over SSH. The server
+# Deploys (or updates) Time Pilot on a Linux server from this Mac, over SSH. The server
 # does not need GitHub access: the code is copied with rsync.
 #
 #   HOST=ubuntu@1.2.3.4 KEY=~/.ssh/server.pem \
@@ -22,13 +22,13 @@ if [ -n "${GEMINI_API_KEY_FILE:-}" ]; then AI_KEY="$(tr -d '[:space:]' <"$GEMINI
 cd "$(dirname "$0")/../.."
 SSH=(ssh -i "$KEY" -o BatchMode=yes)
 
-echo "copying code to $HOST:/opt/ira-tracker"
-"${SSH[@]}" "$HOST" "sudo install -d -m 755 /opt/ira-tracker"
+echo "copying code to $HOST:/opt/time-pilot"
+"${SSH[@]}" "$HOST" "sudo install -d -m 755 /opt/time-pilot"
 rsync -azR --delete -e "ssh -i $KEY -o BatchMode=yes" --rsync-path="sudo rsync" \
   --exclude '.venv' --exclude '.env' --exclude '*.db' --exclude '*.db-*' --exclude '*.log' \
   --exclude '__pycache__' --exclude '.pytest_cache' --exclude '.ruff_cache' \
-  deploy/linux server/ira-service "$HOST:/opt/ira-tracker/"
+  deploy/linux server/autotrack "$HOST:/opt/time-pilot/"
 
 echo "installing on the server"
 printf '%s\n' "$AI_KEY" | "${SSH[@]}" "$HOST" "sudo DOMAIN='${DOMAIN:-}' ADMIN_EMAIL='${ADMIN_EMAIL:-}' GEMINI_API_KEY_STDIN=1 \
-  REGISTRATION='${REGISTRATION:-}' REGISTRATION_DOMAINS='${REGISTRATION_DOMAINS:-}' bash /opt/ira-tracker/deploy/linux/install.sh"
+  REGISTRATION='${REGISTRATION:-}' REGISTRATION_DOMAINS='${REGISTRATION_DOMAINS:-}' bash /opt/time-pilot/deploy/linux/install.sh"

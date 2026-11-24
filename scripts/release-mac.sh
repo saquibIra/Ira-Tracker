@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Builds the Mac installer for employees and (optionally) publishes it on the server.
 #
-#   IRA_SERVER_URL=https://time.example.com scripts/release-mac.sh            # build only
-#   IRA_SERVER_URL=https://time.example.com PUBLISH=1 scripts/release-mac.sh  # build + upload (GCP VM)
-#   IRA_SERVER_URL=... PUBLISH_HOST=ubuntu@1.2.3.4 PUBLISH_KEY=~/key.pem scripts/release-mac.sh  # Linux server
+#   TIMEPILOT_SERVER_URL=https://time.example.com scripts/release-mac.sh            # build only
+#   TIMEPILOT_SERVER_URL=https://time.example.com PUBLISH=1 scripts/release-mac.sh  # build + upload (GCP VM)
+#   TIMEPILOT_SERVER_URL=... PUBLISH_HOST=ubuntu@1.2.3.4 PUBLISH_KEY=~/key.pem scripts/release-mac.sh  # Linux server
 #
 # - The server URL is baked in, so engineers only paste their API token.
 # - Signed with the "Ira Tracker Local Signing" identity from this Mac's keychain, so the
@@ -12,9 +12,9 @@
 # - Universal binary: Apple silicon and Intel.
 set -euo pipefail
 
-: "${IRA_SERVER_URL:?set IRA_SERVER_URL, e.g. https://time.example.com}"
+: "${TIMEPILOT_SERVER_URL:?set TIMEPILOT_SERVER_URL, e.g. https://time.example.com}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Ira Tracker Local Signing}"
-VM="${VM:-ira-tracker}"
+VM="${VM:-time-pilot}"
 ZONE="${ZONE:-asia-south1-a}"
 
 # Tools: Node from nvm and Rust from rustup when they are not on PATH.
@@ -30,33 +30,33 @@ OUT="$(pwd)/src-tauri/target/release-dist"
 mkdir -p "$OUT"
 
 rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
-VITE_IRA_SERVER_URL="$IRA_SERVER_URL" APPLE_SIGNING_IDENTITY="$SIGNING_IDENTITY" \
+VITE_TIMEPILOT_SERVER_URL="$TIMEPILOT_SERVER_URL" APPLE_SIGNING_IDENTITY="$SIGNING_IDENTITY" \
   npm run tauri build -- --target universal-apple-darwin --bundles app
 
-APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/Ira Tracker.app"
+APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/Time Pilot.app"
 codesign --verify --deep --strict "$APP"
 
 # Drag-to-Applications disk image.
 STAGE=$(mktemp -d)
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-DMG="$OUT/IraTracker-$VERSION-mac.dmg"
+DMG="$OUT/TimePilot-$VERSION-mac.dmg"
 rm -f "$DMG"
-hdiutil create -volname "Ira Tracker" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "Time Pilot" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
-cp "$DMG" "$OUT/IraTracker-mac.dmg" # stable "latest" name for the download link
+cp "$DMG" "$OUT/TimePilot-mac.dmg" # stable "latest" name for the download link
 echo "built $DMG"
 
 if [ -n "${PUBLISH_HOST:-}" ]; then
   : "${PUBLISH_KEY:?set PUBLISH_KEY, the SSH key for PUBLISH_HOST}"
   # Only the linked "latest" file goes up; older versions are not kept on the server.
-  scp -i "$PUBLISH_KEY" -o BatchMode=yes "$OUT/IraTracker-mac.dmg" "$PUBLISH_HOST:/tmp/"
+  scp -i "$PUBLISH_KEY" -o BatchMode=yes "$OUT/TimePilot-mac.dmg" "$PUBLISH_HOST:/tmp/"
   ssh -i "$PUBLISH_KEY" -o BatchMode=yes "$PUBLISH_HOST" \
-    "sudo install -m 644 /tmp/IraTracker-mac.dmg /opt/ira-data/downloads/ && rm -f /tmp/IraTracker-mac.dmg"
-  echo "published: $IRA_SERVER_URL/download/IraTracker-mac.dmg"
+    "sudo install -m 644 /tmp/TimePilot-mac.dmg /opt/timepilot-data/downloads/ && rm -f /tmp/TimePilot-mac.dmg"
+  echo "published: $TIMEPILOT_SERVER_URL/download/TimePilot-mac.dmg"
 elif [ "${PUBLISH:-0}" = "1" ]; then
-  gcloud compute scp "$OUT/IraTracker-mac.dmg" "$VM:/tmp/" --zone "$ZONE"
+  gcloud compute scp "$OUT/TimePilot-mac.dmg" "$VM:/tmp/" --zone "$ZONE"
   gcloud compute ssh "$VM" --zone "$ZONE" -- \
-    "sudo install -m 644 /tmp/IraTracker-mac.dmg /opt/ira-data/downloads/ && rm -f /tmp/IraTracker-mac.dmg"
-  echo "published: $IRA_SERVER_URL/download/IraTracker-mac.dmg"
+    "sudo install -m 644 /tmp/TimePilot-mac.dmg /opt/timepilot-data/downloads/ && rm -f /tmp/TimePilot-mac.dmg"
+  echo "published: $TIMEPILOT_SERVER_URL/download/TimePilot-mac.dmg"
 fi

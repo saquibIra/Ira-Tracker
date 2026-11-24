@@ -16,7 +16,7 @@ from typing import Any
 
 import anthropic
 
-log = logging.getLogger("ira.classify")
+log = logging.getLogger("autotrack.classify")
 
 CATEGORIES = ("work", "meeting", "communication", "break", "non_work", "unclear")
 

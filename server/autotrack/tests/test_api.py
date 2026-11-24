@@ -21,7 +21,7 @@ def test_health_is_public(client):
 def test_requests_need_a_valid_token_and_org(client):
     assert client.get("/v1/config").status_code == 401
     assert (
-        client.get("/v1/config", headers={"Authorization": "Bearer x", "X-Ira-Org": "nope"}).status_code
+        client.get("/v1/config", headers={"Authorization": "Bearer x", "X-TimePilot-Org": "nope"}).status_code
         == 400
     )
     assert client.get("/v1/config", headers=h(token="bad")).status_code == 401
@@ -42,7 +42,7 @@ def test_config_returns_policy(client):
 
 
 def test_config_names_the_gemini_provider(make_client):
-    with make_client(IRA_AI_PROVIDER="gemini") as c:
+    with make_client(TIMEPILOT_AI_PROVIDER="gemini") as c:
         assert c.get("/v1/config", headers=h()).json()["ai_provider"] == "gemini"
 
 
@@ -77,7 +77,7 @@ def test_classify_returns_validated_project(client, claude):
 
 def test_classify_without_image_is_allowed(client, claude):
     claude.answer(ref="P1", confidence=0.9)
-    r = classify(client, image=None, title="ira-billing")
+    r = classify(client, image=None, title="acme-billing")
     assert r.status_code == 200 and r.json()["project_id"] == P_BILLING
 
 
@@ -92,7 +92,7 @@ def test_classify_requires_content_length(client):
 
 
 def test_rate_limit(make_client, claude):
-    with make_client(IRA_RATE_LIMIT_PER_HOUR="2") as c:
+    with make_client(TIMEPILOT_RATE_LIMIT_PER_HOUR="2") as c:
         assert classify(c).status_code == 200
         assert classify(c).status_code == 200
         r = classify(c)
@@ -119,12 +119,12 @@ def test_hints_flow_from_admin_to_widget(client):
         headers=h(token=ADMIN),
         json={
             "description": "Internal billing system",
-            "keywords": ["ira-billing", " BILL- ", "ira-billing"],
+            "keywords": ["acme-billing", " BILL- ", "acme-billing"],
         },
     )
     assert r.status_code == 200, r.text
     r = client.get("/v1/hints", headers=h())
-    assert r.json() == {"hints": [{"project_id": P_BILLING, "keywords": ["ira-billing", "BILL-"]}]}
+    assert r.json() == {"hints": [{"project_id": P_BILLING, "keywords": ["acme-billing", "BILL-"]}]}
     etag = r.headers["ETag"]
     assert client.get("/v1/hints", headers={**h(), "If-None-Match": etag}).status_code == 304
 
