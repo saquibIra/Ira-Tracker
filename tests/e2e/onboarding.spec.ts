@@ -8,7 +8,7 @@ import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { latestSubject, mailpit } from './lib/mail';
+import { mailbox } from './lib/mail';
 
 const run = Date.now().toString(36);
 const ORG = `Acme ${run}`;
@@ -18,7 +18,7 @@ const PASSWORD = `Pilot-${run}-Runway!9`;
 const PROJECT = `Website Redesign ${run}`;
 const AUTOTRACK = process.env.TP_AUTOTRACK_URL ?? 'http://localhost:8010';
 const SCOPES = 'create read update delete';
-const mail = mailpit();
+const mail = mailbox();
 
 type State = Awaited<ReturnType<BrowserContext['storageState']>>;
 let welcomeLink = '';
@@ -104,7 +104,7 @@ test('Super Admin creates an organization with its admin', async ({ page }) => {
     await page.getByRole('button', { name: 'Create and send email' }).click();
     await expect(page.getByText('Organization created')).toBeVisible();
     welcomeLink = await mail.link(ADMIN_EMAIL, /\/welcome\//, since);
-    expect(await latestSubject(ADMIN_EMAIL)).toBe(`${ORG} is ready on Time Pilot`);
+    expect(await mail.subject(ADMIN_EMAIL)).toBe(`${ORG} is ready on Time Pilot`);
 });
 
 test('the admin sets a password from the email, once', async ({ browser }) => {
@@ -151,7 +151,7 @@ test('the admin creates a project and invites an employee', async ({ browser }) 
     await page.getByRole('button', { name: /^Employee/ }).click();
     await page.getByRole('button', { name: 'Invite Member' }).last().click();
     inviteLink = await mail.link(EMPLOYEE_EMAIL, /organization-invitations/, since);
-    expect(await latestSubject(EMPLOYEE_EMAIL)).toBe(`Join ${ORG} on Time Pilot`);
+    expect(await mail.subject(EMPLOYEE_EMAIL)).toBe(`Join ${ORG} on Time Pilot`);
     await ctx.close();
 });
 

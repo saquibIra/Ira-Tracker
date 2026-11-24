@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploys (or updates) Time Pilot on a Linux server from this Mac, over SSH. The server
-# does not need GitHub: the code is copied with rsync and the web app is built there.
+# does not need GitHub: the code is copied with rsync and the web app is built there; the
+# Autotrack image is built here (the server cannot reach PyPI) and sent over SSH.
 #
 #   HOST=ubuntu@1.2.3.4 KEY=~/.ssh/server.pem \
 #     DOMAIN=time.example.com ADMIN_EMAIL=superadmin@example.com deploy/linux/deploy.sh
@@ -43,6 +44,17 @@ rsync -azR --delete -e "ssh -i $KEY -o BatchMode=yes" --rsync-path="sudo rsync" 
   --exclude '.venv' --exclude '.env' --exclude '*.db' --exclude '*.db-*' --exclude '*.log' \
   --exclude '__pycache__' --exclude '.pytest_cache' --exclude '.ruff_cache' --exclude 'node_modules' \
   deploy/linux server/autotrack server/web "$HOST:/opt/time-pilot/"
+
+# The Autotrack image needs PyPI, which the server cannot reach: build it here for the
+# server's architecture and send it only when it changed.
+echo "building the Autotrack image (linux/amd64)"
+docker buildx build --quiet --platform linux/amd64 -t time-pilot/autotrack:latest --load server/autotrack >/dev/null
+local_id="$(docker image inspect --format '{{.Id}}' time-pilot/autotrack:latest)"
+remote_id="$("${SSH[@]}" "$HOST" "sudo docker image inspect --format '{{.Id}}' time-pilot/autotrack:latest 2>/dev/null || true")"
+if [ "$local_id" != "$remote_id" ]; then
+  echo "sending the Autotrack image"
+  docker save time-pilot/autotrack:latest | gzip -1 | "${SSH[@]}" "$HOST" "gunzip | sudo docker load -q"
+fi
 
 echo "installing on the server"
 {

@@ -187,8 +187,11 @@ cd "$HERE"
 compose() { docker compose --env-file "$DATA/compose.env" "$@"; }
 log "building and starting (the first run downloads and builds for a few minutes)"
 compose pull --quiet --ignore-buildable
-compose build --pull --quiet
-compose up -d --remove-orphans
+# The web app is built here; the Autotrack image arrives from deploy.sh (PyPI is not
+# reachable from every server), so it is built only if it is missing.
+compose build --pull --quiet app scheduler queue
+if ! docker image inspect time-pilot/autotrack:latest >/dev/null 2>&1; then compose build --quiet autotrack; fi
+compose up -d --remove-orphans --no-build
 if [ -n "$RECREATE_WEB" ]; then compose up -d --force-recreate app scheduler queue; fi
 if [ -n "$RECREATE_AUTOTRACK" ]; then compose up -d --force-recreate autotrack; fi
 
@@ -207,6 +210,11 @@ if [ ! -f "$DATA/admin-credentials.txt" ]; then
   (umask 077 && compose exec -T scheduler php artisan admin:user:create "Time Pilot Admin" "$ADMIN_EMAIL" --verify-email \
     >"$DATA/admin-credentials.txt")
   log "Super Admin created: $ADMIN_EMAIL (password in $DATA/admin-credentials.txt)"
+  # solidtime gives every account a personal organization named after the first name.
+  compose exec -T -e TP_EMAIL="$ADMIN_EMAIL" scheduler php artisan tinker --execute='
+    $u = App\Models\User::query()->where("email", strtolower(getenv("TP_EMAIL")))->firstOrFail();
+    App\Models\Organization::query()->where("user_id", $u->getKey())->where("personal_team", true)
+      ->update(["name" => "Time Pilot Platform"]);' >/dev/null
 fi
 
 # Sign-in clients of the desktop app and the auto-tracking settings page.
