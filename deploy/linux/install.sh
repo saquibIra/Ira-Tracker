@@ -3,7 +3,7 @@
 # copied code (deploy.sh does this for you):
 #
 #   sudo DOMAIN=time.example.com ADMIN_EMAIL=you@example.com \
-#        [GEMINI_API_KEY=...] [REGISTRATION=on|off|invite-only] \
+#        [GEMINI_API_KEY_STDIN=1 (key on the first line of stdin)] [REGISTRATION=on|off|invite-only] \
 #        [REGISTRATION_DOMAINS='example.com,other.com' or '*'] \
 #        /opt/ira-tracker/deploy/linux/install.sh
 #
@@ -17,6 +17,11 @@ REQUESTED_DOMAIN="${DOMAIN:-}"
 REQUESTED_REGISTRATION="${REGISTRATION:-}"
 REQUESTED_REGISTRATION_DOMAINS="${REGISTRATION_DOMAINS:-}"
 log() { echo "[ira-install] $*"; }
+
+# The AI key comes on stdin (deploy.sh), never as GEMINI_API_KEY=... on the sudo command
+# line, which the system log records. Read it before anything else can consume stdin.
+if [ "${GEMINI_API_KEY_STDIN:-}" = 1 ]; then IFS= read -r GEMINI_API_KEY || true; fi
+[[ "${GEMINI_API_KEY:-}" =~ ^[A-Za-z0-9._-]*$ ]] || { echo "GEMINI_API_KEY: unexpected characters"; exit 1; }
 
 case "$REQUESTED_REGISTRATION" in "" | on | off | invite-only) ;; *) echo "REGISTRATION must be on, off or invite-only"; exit 1 ;; esac
 [[ "$REQUESTED_REGISTRATION_DOMAINS" =~ ^(\*|[A-Za-z0-9.,-]*)$ ]] || { echo "REGISTRATION_DOMAINS: domains separated by commas, or *"; exit 1; }
@@ -121,13 +126,20 @@ if ! grep -qx "APP_ENABLE_REGISTRATION=\"$REGISTRATION\"" "$DATA/laravel.env"; t
   RECREATE="--force-recreate"
 fi
 
+# Writes GEMINI_API_KEY into $1 (mode 600). The key reaches awk through its environment,
+# never through process arguments (visible in `ps`).
+write_key() {
+  (umask 077 && K="${GEMINI_API_KEY:-}" awk \
+    '/^GEMINI_API_KEY=/ { print "GEMINI_API_KEY=" ENVIRON["K"]; next } { print }' "$1" >"$1.new")
+  mv "$1.new" "$1"
+}
 if [ ! -f "$DATA/ira-service.env" ]; then
   log "creating $DATA/ira-service.env"
-  sed "s|__GEMINI_API_KEY__|${GEMINI_API_KEY:-}|" "$HERE/ira-service.env.template" >"$DATA/ira-service.env"
-  chmod 600 "$DATA/ira-service.env"
+  cp "$HERE/ira-service.env.template" "$DATA/ira-service.env"
+  write_key "$DATA/ira-service.env"
 elif [ -n "${GEMINI_API_KEY:-}" ]; then
   log "updating GEMINI_API_KEY"
-  sed -i "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=${GEMINI_API_KEY}|" "$DATA/ira-service.env"
+  write_key "$DATA/ira-service.env"
 fi
 
 cp "$HERE/downloads-index.html" "$DATA/downloads/index.html"

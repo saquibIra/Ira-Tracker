@@ -77,7 +77,14 @@ Roles: `employee`, `manager` or `admin`.
 
 ## AI key
 
-Create a Gemini API key at https://aistudio.google.com (Get API key), then run the deploy again with `GEMINI_API_KEY=…`.
+Create a Gemini API key at https://aistudio.google.com (Get API key). Save it to a file on the Mac, then run the deploy again with that file:
+
+```bash
+pbpaste > ~/ira-gemini-key.txt && chmod 600 ~/ira-gemini-key.txt   # after copying the key
+HOST=… KEY=… GEMINI_API_KEY_FILE=~/ira-gemini-key.txt deploy/linux/deploy.sh
+```
+
+The key is sent over SSH on stdin and written only to `/opt/ira-data/ira-service.env`. It never appears on a command line, where the server's sudo log would record it.
 
 Until a key is set, auto-tracking works from project keywords and learned windows only.
 

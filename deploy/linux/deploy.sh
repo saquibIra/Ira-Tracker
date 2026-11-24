@@ -6,7 +6,8 @@
 #     DOMAIN=time.example.com ADMIN_EMAIL=you@example.com deploy/linux/deploy.sh
 #
 # Later updates: the same command (DOMAIN/ADMIN_EMAIL are only needed the first time).
-# Optional: GEMINI_API_KEY=... to set or change the AI key.
+# Optional: GEMINI_API_KEY_FILE=~/key.txt (or GEMINI_API_KEY=...) to set or change the AI
+# key. It travels on stdin, never on a command line (sudo logs those on the server).
 # Optional: REGISTRATION=on|off|invite-only and REGISTRATION_DOMAINS='a.com,b.com' or '*'
 # (sign-up on the website; see onboard.sh). Remembered on the server.
 set -euo pipefail
@@ -15,6 +16,9 @@ set -euo pipefail
 : "${KEY:?set KEY, the SSH private key file}"
 [[ "${REGISTRATION:-}" =~ ^(on|off|invite-only)?$ ]] || { echo "REGISTRATION must be on, off or invite-only"; exit 1; }
 [[ "${REGISTRATION_DOMAINS:-}" =~ ^(\*|[A-Za-z0-9.,-]*)$ ]] || { echo "REGISTRATION_DOMAINS: domains separated by commas, or *"; exit 1; }
+AI_KEY="${GEMINI_API_KEY:-}"
+if [ -n "${GEMINI_API_KEY_FILE:-}" ]; then AI_KEY="$(tr -d '[:space:]' <"$GEMINI_API_KEY_FILE")"; fi
+[[ "$AI_KEY" =~ ^[A-Za-z0-9._-]*$ ]] || { echo "GEMINI_API_KEY: unexpected characters"; exit 1; }
 cd "$(dirname "$0")/../.."
 SSH=(ssh -i "$KEY" -o BatchMode=yes)
 
@@ -26,5 +30,5 @@ rsync -azR --delete -e "ssh -i $KEY -o BatchMode=yes" --rsync-path="sudo rsync" 
   deploy/linux server/ira-service "$HOST:/opt/ira-tracker/"
 
 echo "installing on the server"
-"${SSH[@]}" "$HOST" "sudo DOMAIN='${DOMAIN:-}' ADMIN_EMAIL='${ADMIN_EMAIL:-}' GEMINI_API_KEY='${GEMINI_API_KEY:-}' \
+printf '%s\n' "$AI_KEY" | "${SSH[@]}" "$HOST" "sudo DOMAIN='${DOMAIN:-}' ADMIN_EMAIL='${ADMIN_EMAIL:-}' GEMINI_API_KEY_STDIN=1 \
   REGISTRATION='${REGISTRATION:-}' REGISTRATION_DOMAINS='${REGISTRATION_DOMAINS:-}' bash /opt/ira-tracker/deploy/linux/install.sh"
