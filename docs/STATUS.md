@@ -14,15 +14,15 @@ The widget and platform became **Time Pilot**, a commercial SaaS. The web platfo
 |----|-------------|--------|---------------|
 | TP1 | Deploy with only one Super Admin | ✅ | `install.sh` creates the Super Admin (`ADMIN_EMAIL`, `SUPER_ADMINS`); nothing else |
 | TP2 | Platform empty at the start | ✅ | Fresh Compose project `timepilot` and data dir; the old Ira Tracker data was backed up and left offline |
-| TP3 | Super Admin creates organizations and assigns an admin | ✅ | `/admin` → **New organization**; the admin becomes the owner; the Super Admin is not a member; **Resend admin email** |
-| TP4 | Admin gets an invitation email and joins by setting a password | ✅ | Signed, 7-day, single-use link; tested end to end (e2e steps 2–3) |
+| TP3 | Super Admin creates organizations and assigns an admin | ✅ | `/admin` → **New organization**; the admin becomes the owner; the Super Admin is not a member; the admin's set-password link opens to copy and send (**Admin link** later) |
+| TP4 | Admin gets an invitation email and joins by setting a password | ✅ | Email off for now (team decision, 25 Nov 2026): the Super Admin copies the signed, 7-day, single-use link and sends it; tested end to end (e2e steps 2–3) |
 | TP5 | Admin adds employees and creates projects | ✅ | solidtime Projects and Members; new projects visible to the organization by default (e2e step 4) |
-| TP6 | Employees get an invitation email and join by setting a password | ✅ | Invitation → `/join/…` set-password page; account verified by the link; only that organization (e2e step 5) |
+| TP6 | Employees get an invitation email and join by setting a password | ✅ | Email off for now: the admin copies the invite link (after inviting, or **Copy invite link**) → `/join/…` set-password page; account verified by the link; only that organization (e2e step 5) |
 | TP7 | Desktop: no token login; sign-in in the browser | ✅ | OAuth 2.0 + PKCE, loopback redirect, 12 h / 90 d tokens with automatic renewal (`oauth.rs`; e2e steps 6–7) |
 | TP8 | Welcome screen with one Sign In button and the brand | ✅ | Welcome window (mark, promise, three points, Sign in, waiting/cancel state, organization choice) |
 | TP9 | Modern, professional UI across the platform | ✅ | Brand system (teal, navy dark mode, Inter), sign-in pages, emails, admin panel, settings page, download page, desktop windows and icons |
-| TP10 | Complete workflow end to end | ✅ | `tests/e2e/onboarding.spec.ts`, 9 steps, passing on the local stack |
-| TP11 | Mailinator for email testing | 🟡 | Locally every email is checked through Mailpit. Mailinator drops mail sent straight from the server; production email needs an SMTP service (Brevo planned), after which Mailinator addresses work |
+| TP10 | Complete workflow end to end | ✅ | `tests/e2e/onboarding.spec.ts`, 10 steps (incl. forgotten password), passing locally and on production |
+| TP11 | Mailinator for email testing | ⏸ | Deferred with email (team decision, 25 Nov 2026): links are shared by hand. Mailinator drops mail sent straight from the server, and the production network blocks outgoing SMTP, so real email needs a relay over HTTPS or an opened port |
 | TP12 | Tests, bug fixes, security, production readiness | ✅ | Unit tests (Rust, TS, Python), e2e, web build in CI; signed expiring links, PKCE, first-party consent skip by id only, invite-only sign-up, security headers, secrets on stdin only |
 | TP13 | Deploy the tested application to production | see DEPLOY_LINUX.md | |
 
@@ -122,7 +122,7 @@ Platforms: the document requires **macOS and Windows** (acceptance criteria) and
 ## Points to confirm with Arvind (found while building)
 
 - **Auto-tracking consent and data protection:** engineers see a consent screen, but employees should also get a written notice (and HR/legal sign-off) before rollout. Screenshots and window titles are sent to the server's AI provider for classification (production: Google Gemini API; or Anthropic), and the consent screen names it. Check the provider's data-use and retention terms (e.g. paid Gemini API tier, Anthropic zero-data-retention) before rollout.
-- **Open self-registration (testing only, 24 Nov 2026):** at the team's request, the server allows anyone to sign up without email confirmation (`REGISTRATION=on`, `REGISTRATION_DOMAINS='*'`). New accounts join the company organization as employees (`deploy/linux/onboard.sh`). This is not in the requirements document. Before rollout: add SMTP and switch to `invite-only`, or at least limit it to company domains.
+- **No email yet (25 Nov 2026):** invitations, admin links and password resets are shared by hand (copy buttons); the "forgot password" email is replaced by a Super Admin **Password link**. Decide when to add real email.
 - **Auto entries in solidtime are not tagged:** solidtime tags would need tag-create permission for employees. The widget records `source=auto` locally and the service logs AI usage; tag syncing can follow if admins need it in solidtime.
 
 - **R5 vs "reconciliation never edits entries":** solidtime has no period lock, so edits in its web UI cannot be blocked. Proposal: snapshot entries at lock time, bill from the snapshot, flag later changes.

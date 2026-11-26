@@ -46,8 +46,23 @@ class TimePilotJoinController extends Controller
     }
 
     /**
-     * Signed link for a new organization admin to set their first password. It stops
-     * working once a password is set, because its check value covers the password hash.
+     * The link of an invitation, the same one solidtime's invitation email carries
+     * (OrganizationInvitationMail): it leads a new person to the set-password page.
+     */
+    public static function invitationUrl(OrganizationInvitation $invitation): string
+    {
+        return URL::to(URL::signedRoute(
+            'organization-invitations.accept',
+            ['invitation' => $invitation->getKey()],
+            now()->addDays(90),
+            false
+        ));
+    }
+
+    /**
+     * Signed link to choose a password: the first one of a new organization admin, or a new
+     * one for someone who forgot theirs (made by the Super Admin). It stops working once a
+     * password is set, because its check value covers the password hash.
      */
     public static function welcomeUrl(User $user): string
     {
@@ -135,10 +150,20 @@ class TimePilotJoinController extends Controller
             return $this->linkUsed();
         }
         $organization = $user->currentOrganization;
+        if ($user->password !== null) {
+            return Inertia::render('TimePilot/SetPassword', [
+                'title' => __('Choose a new password'),
+                'intro' => __('Your admin sent you this link to reset your Time Pilot password.'),
+                'email' => $user->email,
+                'name' => $user->name,
+                'action' => $request->getRequestUri(),
+                'submitLabel' => __('Save password and sign in'),
+            ]);
+        }
 
         return Inertia::render('TimePilot/SetPassword', [
             'title' => __('Welcome to Time Pilot'),
-            'intro' => $organization !== null
+            'intro' => $organization !== null && $organization->user_id === $user->getKey()
                 ? __('You are the admin of :organization. Choose a password to sign in.', [
                     'organization' => $organization->name,
                 ])
@@ -156,10 +181,12 @@ class TimePilotJoinController extends Controller
             return $this->linkUsed();
         }
         $data = $this->validated($request);
+        $firstPassword = $user->password === null;
         $firstVerification = $user->email_verified_at === null;
 
         $user->name = $data['name'];
         $user->password = Hash::make($data['password']);
+        $user->setRememberToken(Str::random(60)); // "remember me" elsewhere ends with the old password
         $user->timezone = $data['timezone'];
         if ($firstVerification) {
             $user->email_verified_at = now();
@@ -173,7 +200,9 @@ class TimePilotJoinController extends Controller
         $request->session()->regenerate();
 
         return redirect()->route('dashboard')
-            ->with('bannerText', __('Your organization is ready. Add your projects, then invite your team under Members.'))
+            ->with('bannerText', $firstPassword
+                ? __('Your organization is ready. Add your projects, then invite your team under Members.')
+                : __('Your password has been changed.'))
             ->with('bannerStyle', 'success');
     }
 

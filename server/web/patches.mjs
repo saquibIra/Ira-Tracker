@@ -206,6 +206,149 @@ const patches = [
         replace: 'color: #0F766E;',
         why: 'email link colour',
     },
+    // ---- email off: admins copy and share the links ---------------------------------
+    {
+        // The frontend hides email-only buttons while email is off.
+        file: 'app/Http/Middleware/HandleInertiaRequests.php',
+        find: "            'is_impersonating' => app(ImpersonateManager::class)->isImpersonating(),\n",
+        replace:
+            "            'is_impersonating' => app(ImpersonateManager::class)->isImpersonating(),\n            'timepilot' => ['mail' => \\App\\Service\\TimePilotOnboardingService::mailEnabled()], // Time Pilot\n",
+        why: 'share whether email is on',
+    },
+    {
+        file: 'routes/api.php',
+        find: "            Route::post('/invitations/{invitation}/resend', [InvitationController::class, 'resend'])->name('resend')->middleware('check-organization-blocked');\n",
+        replace:
+            "            Route::post('/invitations/{invitation}/resend', [InvitationController::class, 'resend'])->name('resend')->middleware('check-organization-blocked');\n            Route::get('/invitations/{invitation}/link', [\\App\\Http\\Controllers\\Api\\V1\\TimePilotInvitationLinkController::class, 'show'])->name('link'); // Time Pilot\n",
+        why: 'invitation link endpoint',
+    },
+    {
+        // Super Admin: a "choose a password" link for anyone who forgot theirs.
+        file: 'app/Filament/Resources/UserResource.php',
+        find: '                EditAction::make(),\n',
+        replace: '                EditAction::make(),\n                \\App\\Filament\\TimePilotPasswordLink::userAction(), // Time Pilot\n',
+        why: 'password link on users',
+    },
+    {
+        // After inviting, show the link to share.
+        file: 'resources/js/Components/Common/Member/MemberInviteModal.vue',
+        find: `            () => {
+                addTeamMemberForm.reset();
+                emit('close');
+                show.value = false;
+            }`,
+        replace: `            () => {
+                const invited = addTeamMemberForm.email; // Time Pilot: show the link to share
+                addTeamMemberForm.reset();
+                emit('close');
+                show.value = false;
+                openInviteLink({ email: invited });
+            }`,
+        why: 'invite: show the link afterwards',
+    },
+    {
+        file: 'resources/js/Components/Common/Member/MemberInviteModal.vue',
+        find: "import { useNotificationsStore } from '@/utils/notification';\n",
+        replace: "import { useNotificationsStore } from '@/utils/notification';\nimport { openInviteLink } from '@/utils/timepilotInviteLink';\n",
+        why: 'invite: import the link dialog',
+    },
+    {
+        file: 'resources/js/Components/Common/Invitation/InvitationMoreOptionsDropdown.vue',
+        find: "import { TrashIcon, ArrowPathIcon } from '@heroicons/vue/20/solid';\n",
+        replace:
+            "import { TrashIcon, ArrowPathIcon, LinkIcon } from '@heroicons/vue/20/solid';\nimport { usePage } from '@inertiajs/vue3';\n",
+        why: 'invitation menu: imports',
+    },
+    {
+        file: 'resources/js/Components/Common/Invitation/InvitationMoreOptionsDropdown.vue',
+        find: `    resend: [];
+}>();
+`,
+        replace: `    resend: [];
+    link: [];
+}>();
+
+// Time Pilot: "Resend Invitation" only when email is on; the link can always be copied.
+const mailEnabled =
+    (usePage().props as { timepilot?: { mail?: boolean } }).timepilot?.mail === true;
+`,
+        why: 'invitation menu: link event',
+    },
+    {
+        file: 'resources/js/Components/Common/Invitation/InvitationMoreOptionsDropdown.vue',
+        find: `        <DropdownMenuContent class="min-w-[150px]" align="end">
+            <DropdownMenuItem
+                data-testid="invitation_delete"
+                class="flex items-center space-x-3 cursor-pointer"
+                @click="emit('resend')">`,
+        replace: `        <DropdownMenuContent class="min-w-[150px]" align="end">
+            <DropdownMenuItem
+                data-testid="invitation_link"
+                class="flex items-center space-x-3 cursor-pointer"
+                @click="emit('link')">
+                <LinkIcon class="w-5 text-icon-active" />
+                <span>Copy invite link</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+                v-if="mailEnabled"
+                data-testid="invitation_resend"
+                class="flex items-center space-x-3 cursor-pointer"
+                @click="emit('resend')">`,
+        why: 'invitation menu: copy link item',
+    },
+    {
+        file: 'resources/js/Components/Common/Invitation/InvitationTableRow.vue',
+        find: '<InvitationMoreOptionsDropdown @delete="deleteInvitation" @resend="resendInvitation" />',
+        replace:
+            '<InvitationMoreOptionsDropdown\n                @delete="deleteInvitation"\n                @resend="resendInvitation"\n                @link="openInviteLink({ id: invitation.id, email: invitation.email })" />',
+        why: 'invitation row: open the link dialog',
+    },
+    {
+        file: 'resources/js/Components/Common/Invitation/InvitationTableRow.vue',
+        find: "import { useInvitationsStore } from '@/utils/useInvitations';\n",
+        replace: "import { useInvitationsStore } from '@/utils/useInvitations';\nimport { openInviteLink } from '@/utils/timepilotInviteLink';\n",
+        why: 'invitation row: import',
+    },
+    {
+        file: 'resources/js/Pages/Members.vue',
+        find: `        <InvitationTable v-if="activeTab === 'invitations'"></InvitationTable>\n`,
+        replace: `        <InvitationTable v-if="activeTab === 'invitations'"></InvitationTable>\n        <TimePilotInviteLinkModal />\n`,
+        why: 'members page: link dialog',
+    },
+    {
+        file: 'resources/js/Pages/Members.vue',
+        find: "import InvitationTable from '@/Components/Common/Invitation/InvitationTable.vue';\n",
+        replace:
+            "import InvitationTable from '@/Components/Common/Invitation/InvitationTable.vue';\nimport TimePilotInviteLinkModal from '@/Components/Common/Invitation/TimePilotInviteLinkModal.vue';\n",
+        why: 'members page: import',
+    },
+    {
+        // Without email a reset email never arrives: point people to their admin instead.
+        file: 'resources/js/Pages/Auth/Login.vue',
+        find: `                <Link
+                    v-if="canResetPassword"
+                    :href="route('password.request')"
+                    class="underline text-sm text-text-secondary hover:text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Forgot your password?
+                </Link>`,
+        replace: `                <Link
+                    v-if="canResetPassword && mailEnabled"
+                    :href="route('password.request')"
+                    class="underline text-sm text-text-secondary hover:text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Forgot your password?
+                </Link>
+                <span v-else class="text-sm text-text-secondary">
+                    Forgot your password? Ask your admin.
+                </span>`,
+        why: 'sign-in page: forgot password without email',
+    },
+    {
+        file: 'resources/js/Pages/Auth/Login.vue',
+        find: "import TextInput from '@/packages/ui/src/Input/TextInput.vue';\n",
+        replace:
+            "import TextInput from '@/packages/ui/src/Input/TextInput.vue';\n\nconst mailEnabled =\n    (usePage().props as { timepilot?: { mail?: boolean } }).timepilot?.mail === true;\n",
+        why: 'sign-in page: email switch',
+    },
 ];
 
 let failed = 0;

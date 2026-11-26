@@ -238,12 +238,12 @@ mod tests {
     #[test]
     fn service_is_derived_from_the_server() {
         assert_eq!(
-            service_url("https://tracker.aasnatech.com"),
-            "https://tracker.aasnatech.com/autotrack"
+            service_url("https://time.example.com"),
+            "https://time.example.com/autotrack"
         );
         assert_eq!(
-            service_url(" https://tracker.aasnatech.com/ "),
-            "https://tracker.aasnatech.com/autotrack"
+            service_url(" https://time.example.com/ "),
+            "https://time.example.com/autotrack"
         );
         assert_eq!(
             service_url("http://localhost:8000"),

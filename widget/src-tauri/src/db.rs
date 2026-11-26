@@ -1411,11 +1411,11 @@ mod tests {
     #[test]
     fn another_servers_service_settings_are_dropped() {
         let c = mem();
-        let prod = Some("https://tracker.aasnatech.com/autotrack");
+        let prod = Some("https://time.example.com/autotrack");
         // Nothing stored: nothing to do.
         assert!(!forget_other_service(&c, prod).unwrap());
         // Same service: kept.
-        kv_set(&c, "ai_url", "https://tracker.aasnatech.com/autotrack").unwrap();
+        kv_set(&c, "ai_url", "https://time.example.com/autotrack").unwrap();
         kv_set(&c, "ai_policy", "{}").unwrap();
         assert!(!forget_other_service(&c, prod).unwrap());
         assert!(kv_get(&c, "ai_policy").is_some());
@@ -1424,14 +1424,14 @@ mod tests {
             kv_set(&c, k, "x").unwrap();
         }
         kv_set(&c, "ai_url", "http://localhost:8010").unwrap();
-        kv_set(&c, "base_url", "https://tracker.aasnatech.com").unwrap();
+        kv_set(&c, "base_url", "https://time.example.com").unwrap();
         assert!(forget_other_service(&c, prod).unwrap());
         for k in SERVICE_KEYS {
             assert_eq!(kv_get(&c, k), None, "{k}");
         }
         assert!(kv_get(&c, "base_url").is_some(), "the sign-in stays");
         // Signed out (no server): any stored service is stale.
-        kv_set(&c, "ai_url", "https://tracker.aasnatech.com/autotrack").unwrap();
+        kv_set(&c, "ai_url", "https://time.example.com/autotrack").unwrap();
         assert!(forget_other_service(&c, None).unwrap());
     }
 

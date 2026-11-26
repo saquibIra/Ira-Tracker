@@ -20,14 +20,15 @@ docker build -t time-pilot/web:dev .        # local; production builds it on the
 | Brand: logo, teal theme, navy dark mode, favicons, app name from `APP_NAME` | `overlay/resources/js/Components/*`, `overlay/public/*`, `patches.mjs` (accent colours, `config/app.php`) |
 | Sign-in pages: split layout with the product story; "ask your admin" instead of a sign-up link | `AuthenticationCard.vue`, patch to `Login.vue` |
 | Sidebar card: desktop app, auto-tracking settings, source code | `UpdateSidebarNotification.vue` |
-| Super Admin: **New organization** (with its admin as owner) and **Resend admin email** | `ListOrganizations.php`, `TimePilotOnboardingService.php`, `TimePilotAdminWelcomeMail.php` |
-| Invitations: people without an account set a password on the link (account verified by the link) | `TimePilotJoinController.php`, `Pages/TimePilot/SetPassword.vue`, patch to `OrganizationInvitationController.php` |
+| Super Admin: **New organization** (with its admin as owner), its set-password link to copy, **Admin link**, **Password link** on Users; **Resend admin email** only when email is on | `ListOrganizations.php`, `TimePilotPasswordLink.php`, `TimePilotOnboardingService.php`, `TimePilotAdminWelcomeMail.php`, patch to `UserResource.php` |
+| Email off: invite link to copy after inviting and on each pending invitation; email-only buttons hidden (`timepilot.mail` shared prop) | `TimePilotInvitationLinkController.php` (+ route patch to `routes/api.php`), `TimePilotInviteLinkModal.vue`, `utils/timepilotInviteLink.ts`, patches to `MemberInviteModal.vue`, `InvitationMoreOptionsDropdown.vue`, `InvitationTableRow.vue`, `Members.vue`, `Login.vue`, `HandleInertiaRequests.php` |
+| Invitations and password links: people without an account set a password on the link (account verified by the link); the same page resets a forgotten password | `TimePilotJoinController.php`, `Pages/TimePilot/SetPassword.vue`, patch to `OrganizationInvitationController.php` |
 | Invite-only: `/register` leads to sign-in when sign-up is off | `routes/timepilot.php` |
 | OAuth: Time Pilot's own clients skip the consent screen; 12 h access / 90 day refresh tokens | patches to `Client.php`, `AuthServiceProvider.php`; `timepilot:oauth-clients` |
 | New projects visible to the organization by default | patch to `ProjectCreateModal.vue` |
 | Emails: logo, colours, invitation text and subject | `overlay/resources/views/...`, patches |
 | Admin panel brand | patch to `AdminPanelProvider.php` |
-| AGPL source link | `/source` route (`TIMEPILOT_SOURCE_URL`) |
+| AGPL source link | `/source` route (`TIMEPILOT_SOURCE_URL`, set by the installer) |
 
 Settings (in `laravel.env`): `APP_NAME`, `TIMEPILOT_FIRST_PARTY_CLIENTS` (set by the installer), `TIMEPILOT_SOURCE_URL`, `TIMEPILOT_ADMIN_INVITE_DAYS` (7), `TIMEPILOT_JOIN_LINK_MINUTES` (120).
 

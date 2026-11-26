@@ -1,8 +1,8 @@
 # Local development and end-to-end tests: the Time Pilot web app (the solidtime fork in
-# ../web), Mailpit to catch every email, and the Autotrack service.
+# ../web) and the Autotrack service. Email is off, as in production: admins copy the
+# set-password and invitation links in the app.
 #
 #   http://localhost:8000   web app (Super Admin panel at /admin)
-#   http://localhost:8025   Mailpit: every email the app sends, with links
 #   http://localhost:8010   Autotrack service (the desktop app's AI and settings)
 #
 #   cp laravel.env.example laravel.env   # then fill in the keys, see readme.md
@@ -62,12 +62,6 @@ services:
   gotenberg:
     image: gotenberg/gotenberg:8
     restart: unless-stopped
-    networks: [internal]
-
-  mailpit:
-    image: axllent/mailpit:v1.21
-    restart: unless-stopped
-    ports: ["127.0.0.1:8025:8025"]
     networks: [internal]
 
   autotrack:

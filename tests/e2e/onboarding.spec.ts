@@ -1,28 +1,32 @@
 /**
- * The whole Time Pilot onboarding, as people do it:
- * Super Admin -> organization + admin email -> admin sets a password -> project and
- * employee invitation -> employee sets a password -> desktop app signs in through the
- * browser (OAuth 2.0 + PKCE) and reaches the Autotrack service.
+ * The whole Time Pilot onboarding, as people do it (email is off, so links are copied):
+ * Super Admin -> organization + admin link -> admin sets a password -> project and
+ * employee invitation link -> employee sets a password -> desktop app signs in through the
+ * browser (OAuth 2.0 + PKCE) and reaches the Autotrack service -> a forgotten password is
+ * reset with a link from the Super Admin.
  */
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mailbox } from './lib/mail';
 
 const run = Date.now().toString(36);
 const ORG = `Acme ${run}`;
-const ADMIN_EMAIL = `tp-admin-${run}@mailinator.com`;
-const EMPLOYEE_EMAIL = `tp-employee-${run}@mailinator.com`;
+const ADMIN_EMAIL = `tp-admin-${run}@example.com`;
+const EMPLOYEE_EMAIL = `tp-employee-${run}@example.com`;
+const PENDING_EMAIL = `tp-pending-${run}@example.com`;
 const PASSWORD = `Pilot-${run}-Runway!9`;
+const NEW_PASSWORD = `Pilot-${run}-Glide!7`;
 const PROJECT = `Website Redesign ${run}`;
 const AUTOTRACK = process.env.TP_AUTOTRACK_URL ?? 'http://localhost:8010';
 const SCOPES = 'create read update delete';
-const mail = mailbox();
+const CLIPBOARD = ['clipboard-read', 'clipboard-write'];
 
 type State = Awaited<ReturnType<BrowserContext['storageState']>>;
 let welcomeLink = '';
 let inviteLink = '';
+let pendingLinkApi = ''; // the link endpoint of an invitation nobody accepts
+let superAdminState: State;
 let adminState: State;
 let employeeState: State;
 
@@ -69,6 +73,13 @@ async function desktopAuthorize(ctx: BrowserContext, clientId: string) {
     return { code: code!, verifier, redirect: lb.redirect };
 }
 
+/** The link shown in the Super Admin's "Password link" dialog. */
+async function passwordLinkFromDialog(page: Page): Promise<string> {
+    const input = page.getByTestId('password-link');
+    await expect(input).toHaveValue(/\/welcome\//);
+    return input.inputValue();
+}
+
 async function logIn(page: Page, email: string, password: string) {
     await page.goto('/login');
     await page.getByLabel('Email').fill(email);
@@ -82,6 +93,8 @@ test('sign-in page is Time Pilot and public sign-up is closed', async ({ page, r
     await expect(page).toHaveTitle(/Time Pilot/);
     await expect(page.getByText('Time tracking that keeps up with your team.')).toBeVisible();
     await expect(page.getByText("Ask your organization's admin for an invitation")).toBeVisible();
+    // No email: a forgotten password is reset with a link from the admin.
+    await expect(page.getByText('Forgot your password? Ask your admin.')).toBeVisible();
     expect(await page.locator('body').innerText()).not.toMatch(/solidtime/i);
     const register = await request.get('/register', { maxRedirects: 0 });
     expect(register.status()).not.toBe(200);
@@ -90,24 +103,34 @@ test('sign-in page is Time Pilot and public sign-up is closed', async ({ page, r
     expect(source.headers()['location']).toContain('github.com');
 });
 
-test('Super Admin creates an organization with its admin', async ({ page }) => {
+test('Super Admin creates an organization and gets the admin link', async ({ browser }) => {
     const email = process.env.TP_SUPERADMIN_EMAIL;
     const password = process.env.TP_SUPERADMIN_PASSWORD;
     test.skip(!email || !password, 'set TP_SUPERADMIN_EMAIL and TP_SUPERADMIN_PASSWORD');
-    const since = Date.now();
+    const ctx = await browser.newContext({ permissions: CLIPBOARD });
+    const page = await ctx.newPage();
     await logIn(page, email!, password!);
     await page.goto('/admin/organizations');
+    // Email is off: nothing offers to send one.
+    await expect(page.getByRole('button', { name: 'Resend admin email' })).toHaveCount(0);
     await page.getByRole('button', { name: 'New organization' }).click();
     await page.getByLabel('Organization name').fill(ORG);
     await page.getByLabel('Admin name').fill('Alice Admin');
     await page.getByLabel('Admin email').fill(ADMIN_EMAIL);
-    await page.getByRole('button', { name: 'Create and send email' }).click();
+    await page.getByRole('button', { name: 'Create organization' }).click();
     await expect(page.getByText('Organization created')).toBeVisible();
-    welcomeLink = await mail.link(ADMIN_EMAIL, /\/welcome\//, since);
-    expect(await mail.subject(ADMIN_EMAIL)).toBe(`${ORG} is ready on Time Pilot`);
+    // The link to send to the admin opens right away, with a copy button.
+    await expect(page.getByRole('heading', { name: 'Password link for Alice Admin' })).toBeVisible();
+    await expect(page.getByText(`Send this link to ${ADMIN_EMAIL} yourself`)).toBeVisible();
+    welcomeLink = await passwordLinkFromDialog(page);
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(welcomeLink);
+    await page.getByRole('button', { name: 'Done' }).click();
+    superAdminState = await ctx.storageState();
+    await ctx.close();
 });
 
-test('the admin sets a password from the email, once', async ({ browser }) => {
+test('the admin sets a password from the link, once', async ({ browser }) => {
     test.skip(!welcomeLink, 'needs the previous step');
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
@@ -136,7 +159,7 @@ test('the admin sets a password from the email, once', async ({ browser }) => {
 
 test('the admin creates a project and invites an employee', async ({ browser }) => {
     test.skip(!adminState, 'needs the previous step');
-    const ctx = await browser.newContext({ storageState: adminState });
+    const ctx = await browser.newContext({ storageState: adminState, permissions: CLIPBOARD });
     const page = await ctx.newPage();
     await page.goto('/projects');
     await page.getByRole('button', { name: 'Create Project' }).first().click();
@@ -144,14 +167,43 @@ test('the admin creates a project and invites an employee', async ({ browser }) 
     await page.getByRole('button', { name: 'Create Project' }).last().click();
     await expect(page.getByText(PROJECT).first()).toBeVisible();
 
-    const since = Date.now();
     await page.goto('/members');
     await page.getByRole('button', { name: 'Invite member' }).click();
     await page.getByPlaceholder('Member Email').fill(EMPLOYEE_EMAIL);
     await page.getByRole('button', { name: /^Employee/ }).click();
     await page.getByRole('button', { name: 'Invite Member' }).last().click();
-    inviteLink = await mail.link(EMPLOYEE_EMAIL, /organization-invitations/, since);
-    expect(await mail.subject(EMPLOYEE_EMAIL)).toBe(`Join ${ORG} on Time Pilot`);
+    // The link to share opens right after inviting.
+    await expect(page.getByText(`Send this link to ${EMPLOYEE_EMAIL}`)).toBeVisible();
+    const shown = page.getByTestId('invite_link');
+    await expect(shown).toHaveValue(/\/organization-invitations\//);
+    inviteLink = await shown.inputValue();
+    await page.getByTestId('invite_link_copy').click();
+    await expect(page.getByTestId('invite_link_copy')).toHaveText('Copied');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(inviteLink);
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // A second invitation stays pending.
+    await page.getByRole('button', { name: 'Invite member' }).click();
+    await page.getByPlaceholder('Member Email').fill(PENDING_EMAIL);
+    await page.getByRole('button', { name: /^Employee/ }).click();
+    await page.getByRole('button', { name: 'Invite Member' }).last().click();
+    await expect(page.getByText(`Send this link to ${PENDING_EMAIL}`)).toBeVisible();
+    await expect(page.getByTestId('invite_link')).toHaveValue(/\/organization-invitations\//);
+    await page.getByRole('button', { name: 'Done' }).click();
+    await expect(page.getByTestId('invite_link')).toBeHidden();
+    // The list on screen shows the new invitation without reloading the page.
+    await expect(page.getByText(PENDING_EMAIL, { exact: true })).toBeVisible();
+
+    // Later: Invitations tab -> the invitation's menu -> Copy invite link (newest first).
+    await page.getByRole('tab', { name: 'Invitations' }).click();
+    await page.getByRole('button', { name: 'Actions for the invitation' }).first().click();
+    await expect(page.getByRole('menuitem', { name: 'Resend Invitation' })).toHaveCount(0);
+    const linkResponse = page.waitForResponse((r) => /\/invitations\/[^/]+\/link$/.test(new URL(r.url()).pathname));
+    await page.getByRole('menuitem', { name: 'Copy invite link' }).click();
+    pendingLinkApi = new URL((await linkResponse).url()).pathname;
+    await expect(page.getByText(`Send this link to ${PENDING_EMAIL}`)).toBeVisible();
+    await expect(page.getByTestId('invite_link')).toHaveValue(/\/organization-invitations\//);
+    await page.getByRole('button', { name: 'Done' }).click();
     await ctx.close();
 });
 
@@ -218,9 +270,26 @@ test('desktop tokens: exchange, short lifetime, refresh, API and Autotrack acces
     const projects = (await (await request.get(`/api/v1/organizations/${orgId}/projects`, { headers: auth })).json()).data;
     expect(projects.map((p: { name: string }) => p.name)).toContain(PROJECT);
 
+    // Invitation links are for admins: an employee is refused, a stranger must sign in.
+    expect(pendingLinkApi).toContain(`/api/v1/organizations/${orgId}/invitations/`);
+    expect((await request.get(pendingLinkApi, { headers: auth })).status()).toBe(403);
+    expect((await request.get(pendingLinkApi, { headers: { Accept: 'application/json' } })).status()).toBe(401);
+
     const cfg = await request.get(`${AUTOTRACK}/v1/config`, { headers: { ...auth, 'X-TimePilot-Org': orgId } });
     expect(cfg.status()).toBe(200);
     expect((await cfg.json()).ai_provider).toBeTruthy();
+
+    // The AI (production: Gemini) recognizes the project from a window title, as for the app.
+    const project = projects.find((p: { name: string }) => p.name === PROJECT);
+    const classified = await request.post(`${AUTOTRACK}/v1/classify`, {
+        headers: { ...auth, 'X-TimePilot-Org': orgId },
+        multipart: { app: 'Figma', title: `${PROJECT} – homepage hero – Figma` },
+        timeout: 60_000,
+    });
+    expect(classified.status(), await classified.text()).toBe(200);
+    const answer = await classified.json();
+    expect(answer.model).toBeTruthy();
+    expect(answer.project_id).toBe(project.id);
 
     const refreshed = await request.post('/oauth/token', {
         form: { grant_type: 'refresh_token', client_id: info.desktop_client_id, refresh_token: t.refresh_token, scope: SCOPES },
@@ -255,4 +324,51 @@ test('an employee cannot open the auto-tracking settings', async ({ browser }) =
     await page.getByRole('button', { name: 'Sign in with Time Pilot' }).click();
     await expect(page.getByText('You are not an owner or admin of any organization.')).toBeVisible();
     await ctx.close();
+});
+
+test('a forgotten password: the Super Admin sends a new link', async ({ browser }) => {
+    test.skip(!superAdminState || !employeeState, 'needs the Super Admin and the employee');
+    const admin = await browser.newContext({ storageState: superAdminState });
+    const panel = await admin.newPage();
+    await panel.goto(`/admin/users?tableSearch=${encodeURIComponent(EMPLOYEE_EMAIL)}`);
+    await panel.getByRole('row', { name: EMPLOYEE_EMAIL }).getByRole('button', { name: 'Password link' }).click();
+    await expect(panel.getByText('Bob Builder already has a password.')).toBeVisible();
+    const resetLink = await passwordLinkFromDialog(panel);
+    await panel.getByRole('button', { name: 'Done' }).click();
+
+    // An organization admin's link can be found again under Organizations > Admin link.
+    await panel.goto('/admin/organizations');
+    await panel.getByRole('button', { name: 'Admin link' }).click();
+    const pick = panel.getByRole('dialog', { name: 'Admin link' });
+    await pick.getByRole('combobox', { name: /Organization/ }).click();
+    await panel.keyboard.type(ORG);
+    await pick.getByRole('option', { name: ORG, exact: true }).click();
+    await pick.getByRole('button', { name: 'Show link' }).click();
+    await expect(panel.getByRole('heading', { name: 'Password link for Alice Admin' })).toBeVisible();
+    await expect(panel.getByText('Alice Admin already has a password.')).toBeVisible();
+    expect(await passwordLinkFromDialog(panel)).toMatch(/\/welcome\//);
+    await admin.close();
+
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(resetLink);
+    await expect(page.getByRole('heading', { name: 'Choose a new password' })).toBeVisible();
+    await page.getByLabel('Password', { exact: true }).fill(NEW_PASSWORD);
+    await page.getByLabel('Confirm password').fill(NEW_PASSWORD);
+    await page.getByRole('button', { name: 'Save password and sign in' }).click();
+    await expect(page).toHaveURL(/\/dashboard/);
+    await expect(page.getByText('Your password has been changed.')).toBeVisible();
+    await ctx.close();
+
+    // The new password works, the link does not work twice.
+    const fresh = await browser.newContext();
+    const login = await fresh.newPage();
+    await logIn(login, EMPLOYEE_EMAIL, NEW_PASSWORD);
+    await expect(login).toHaveURL(/\/dashboard/);
+    await fresh.close();
+    const guest = await browser.newContext();
+    const again = await guest.newPage();
+    await again.goto(resetLink);
+    await expect(again.getByText('This link has already been used')).toBeVisible();
+    await guest.close();
 });

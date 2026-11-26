@@ -12,7 +12,7 @@ Time tracking that keeps up with your team. Organizations manage projects and pe
 
 1. The **Super Admin** creates an organization and enters its admin's email (`/admin` → Organizations → **New organization**).
 2. The **admin** gets an email, sets a password, adds projects and invites the team under **Members**.
-3. **Employees** get an invitation email, set a password, install the desktop app from `/download/` and click **Sign in**: the browser opens, they sign in, and the app is ready.
+3. **Employees** get an invitation link from their admin, set a password, install the desktop app from `/download/` and click **Sign in**: the browser opens, they sign in, and the app is ready.
 
 Sign-up is by invitation only.
 
@@ -26,7 +26,7 @@ Sign-up is by invitation only.
 ├── server/
 │   ├── web/             Web platform: solidtime fork (Dockerfile, overlay/, patches.mjs)
 │   ├── autotrack/       FastAPI: AI auto-tracking, settings page, day submissions
-│   ├── local/           Local stack: web + Postgres + Mailpit + Autotrack
+│   ├── local/           Local stack: web + Postgres + Autotrack
 │   └── seed/            Demo data loader
 ├── deploy/linux/        Production on a Linux server with Docker
 ├── tests/e2e/           Playwright end-to-end test of the onboarding
@@ -41,13 +41,13 @@ Prerequisites: Docker Desktop, Node 22, Rust (`rustup`), Xcode command-line tool
 
 1. **Platform** — see [server/local/readme.md](server/local/readme.md) for the first run (keys, Super Admin, sign-in clients). Then:
    ```bash
-   cd server/local && docker compose up -d --build   # web http://localhost:8000, mail http://localhost:8025
+   cd server/local && docker compose up -d --build   # web http://localhost:8000
    ```
 2. **Desktop app**
    ```bash
    cd widget && npm install && npm run tauri dev
    ```
-   Click **Sign in**: the browser opens the local sign-in page; sign in with an account you created through an invitation (emails appear in Mailpit). On macOS, allow Screen Recording for the dev build when asked.
+   Click **Sign in**: the browser opens the local sign-in page; sign in with an account you created through an invitation link (copy it under Members). On macOS, allow Screen Recording for the dev build when asked.
 
 ## Tests
 

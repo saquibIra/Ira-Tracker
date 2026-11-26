@@ -1,11 +1,10 @@
 # Local stack
 
-The Time Pilot web platform (built from `../web`), Postgres, Mailpit and the Autotrack service, for development and the end-to-end test.
+The Time Pilot web platform (built from `../web`), Postgres and the Autotrack service, for development and the end-to-end test. Email is off, as in production: the app shows the links to copy.
 
 | Address | What |
 |---|---|
 | http://localhost:8000 | web platform (Super Admin panel at `/admin`) |
-| http://localhost:8025 | Mailpit: every email the platform sends |
 | http://localhost:8010 | Autotrack service (settings page at `/admin/`) |
 
 ## First run
@@ -13,7 +12,7 @@ The Time Pilot web platform (built from `../web`), Postgres, Mailpit and the Aut
 ```bash
 cd server/local
 cp .env.example .env                       # database name, user, password
-cp laravel.env.example laravel.env         # web settings (email goes to Mailpit)
+cp laravel.env.example laravel.env         # web settings (email off)
 docker run --rm solidtime/solidtime:0.23.0 php artisan self-host:generate-keys >> laravel.env
 cp ../autotrack/.env.example ../autotrack/.env   # add GEMINI_API_KEY for live AI (optional)
 
@@ -26,7 +25,7 @@ docker compose exec app php artisan timepilot:oauth-clients --admin-redirect=htt
 
 The last command prints `{"desktop": "...", "admin": "..."}`. Put both ids in `laravel.env` as `TIMEPILOT_FIRST_PARTY_CLIENTS="<desktop>,<admin>"`, and in `../autotrack/.env` as `TIMEPILOT_DESKTOP_CLIENT_ID`, `TIMEPILOT_ADMIN_CLIENT_ID` and `TIMEPILOT_PUBLIC_URL=http://localhost:8000`. Then `docker compose up -d` again.
 
-Sign in at http://localhost:8000 as the Super Admin (password printed by `admin:user:create`) and create an organization under `/admin` → Organizations → **New organization**. Its emails, with their links, appear in Mailpit.
+Sign in at http://localhost:8000 as the Super Admin (password printed by `admin:user:create`) and create an organization under `/admin` → Organizations → **New organization**. Its admin's set-password link opens right away to copy.
 
 `TRUSTED_HOSTS="app"` (in `laravel.env.example`) lets the Autotrack container call the web platform by its Docker name.
 

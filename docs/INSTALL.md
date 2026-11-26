@@ -4,7 +4,7 @@ Time Pilot records which project you work on, so you don't have to start and sto
 
 ## 1. Join your organization
 
-1. Open the invitation email from Time Pilot and click **Accept invitation**.
+1. Open the invitation link your admin sent you.
 2. Choose your password. That's your Time Pilot account.
 
 No invitation? Ask your organization's admin.

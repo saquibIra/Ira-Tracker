@@ -24,7 +24,10 @@ Route::get('/register', function (Request $request) {
 
 // AGPL-3.0 section 13: source code of this modified version.
 Route::get('/source', function () {
-    return redirect()->away((string) config('timepilot.source_url'));
+    $url = (string) config('timepilot.source_url');
+    abort_if($url === '', 404);
+
+    return redirect()->away($url);
 })->name('timepilot.source');
 
 // Joining by invitation and the first password of a new organization admin. Both links are

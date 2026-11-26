@@ -3,13 +3,16 @@
 # code; deploy/linux/deploy.sh does this for you from a Mac.
 #
 #   sudo DOMAIN=time.example.com ADMIN_EMAIL=you@example.com \
-#        [MAIL=log|smtp SMTP_HOST=... SMTP_PORT=587 SMTP_USERNAME=... MAIL_FROM=...] \
-#        [SECRETS_STDIN=1]   # GEMINI_API_KEY=... and SMTP_PASSWORD=... lines on stdin
+#        SOURCE_URL=https://github.com/you/time-pilot \
+#        [SECRETS_STDIN=1]   # a GEMINI_API_KEY=... line on stdin
 #        /opt/time-pilot/deploy/linux/install.sh
 #
 # The first run creates an empty platform with one Super Admin (ADMIN_EMAIL; password in
 # $DATA/admin-credentials.txt). Safe to re-run: secrets and settings in $DATA are created
 # once and kept; settings passed again are remembered in compose.env.
+#
+# Email is off: the app writes messages to its log, and admins share the set-password and
+# invitation links themselves (copy buttons in the app).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -18,30 +21,22 @@ log() { echo "[timepilot-install] $*"; }
 
 # ---- secrets: on stdin (never on a command line, which the system log records) --------
 GEMINI_API_KEY="${GEMINI_API_KEY:-}"
-SMTP_PASSWORD="${SMTP_PASSWORD:-}"
 if [ "${SECRETS_STDIN:-}" = 1 ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
       GEMINI_API_KEY=*) GEMINI_API_KEY="${line#GEMINI_API_KEY=}" ;;
-      SMTP_PASSWORD=*) SMTP_PASSWORD="${line#SMTP_PASSWORD=}" ;;
     esac
   done
 fi
 [[ "$GEMINI_API_KEY" =~ ^[A-Za-z0-9._-]*$ ]] || { echo "GEMINI_API_KEY: unexpected characters"; exit 1; }
-[[ "$SMTP_PASSWORD" =~ ^[A-Za-z0-9._~!@#%^*+=,:/-]*$ ]] || { echo "SMTP_PASSWORD: use letters, digits and ._~!@#%^*+=,:/- only"; exit 1; }
 
 # ---- other settings (not secret) -------------------------------------------------------
 REQ_DOMAIN="${DOMAIN:-}"
-REQ_MAIL="${MAIL:-}"
-REQ_SMTP_HOST="${SMTP_HOST:-}"
-REQ_SMTP_PORT="${SMTP_PORT:-}"
-REQ_SMTP_USERNAME="${SMTP_USERNAME:-}"
-REQ_MAIL_FROM="${MAIL_FROM:-}"
-case "$REQ_MAIL" in "" | log | smtp) ;; *) echo "MAIL must be log or smtp"; exit 1 ;; esac
-[[ "$REQ_SMTP_HOST" =~ ^[A-Za-z0-9.-]*$ ]] || { echo "SMTP_HOST: a host name"; exit 1; }
-[[ "$REQ_SMTP_PORT" =~ ^[0-9]{0,5}$ ]] || { echo "SMTP_PORT: a number"; exit 1; }
-[[ "$REQ_SMTP_USERNAME" =~ ^[A-Za-z0-9._@+-]*$ ]] || { echo "SMTP_USERNAME: unexpected characters"; exit 1; }
-[[ "$REQ_MAIL_FROM" =~ ^([A-Za-z0-9._+-]+@[A-Za-z0-9.-]+)?$ ]] || { echo "MAIL_FROM: an email address"; exit 1; }
+# SOURCE_URL: where the modified web app's source is published (AGPL-3.0 section 13); the
+# "Source code" links point there.
+REQ_SOURCE_URL="${SOURCE_URL:-}"
+[[ "$REQ_DOMAIN" =~ ^[A-Za-z0-9.-]*$ ]] || { echo "DOMAIN: a host name"; exit 1; }
+[[ "$REQ_SOURCE_URL" =~ ^(https://[A-Za-z0-9._~/-]+)?$ ]] || { echo "SOURCE_URL: an https:// address"; exit 1; }
 command -v docker >/dev/null || { echo "Docker is required"; exit 1; }
 docker compose version >/dev/null || { echo "Docker Compose v2 is required"; exit 1; }
 
@@ -62,7 +57,6 @@ DATA_DIR=$DATA
 DB_DATABASE=solidtime
 DB_USERNAME=solidtime
 DB_PASSWORD=$(openssl rand -hex 24)
-MAIL=log
 EOF
   )
 fi
@@ -83,13 +77,8 @@ if [ -n "$REQ_DOMAIN" ] && [ "$REQ_DOMAIN" != "$DOMAIN" ]; then
   DOMAIN="$REQ_DOMAIN"
   RECREATE_WEB=1
 fi
-if [ -n "$REQ_MAIL" ]; then remember MAIL "$REQ_MAIL"; MAIL="$REQ_MAIL"; fi
-if [ -n "$REQ_SMTP_HOST" ]; then remember SMTP_HOST "$REQ_SMTP_HOST"; SMTP_HOST="$REQ_SMTP_HOST"; fi
-if [ -n "$REQ_SMTP_PORT" ]; then remember SMTP_PORT "$REQ_SMTP_PORT"; SMTP_PORT="$REQ_SMTP_PORT"; fi
-if [ -n "$REQ_SMTP_USERNAME" ]; then remember SMTP_USERNAME "$REQ_SMTP_USERNAME"; SMTP_USERNAME="$REQ_SMTP_USERNAME"; fi
-if [ -n "$REQ_MAIL_FROM" ]; then remember MAIL_FROM "$REQ_MAIL_FROM"; MAIL_FROM="$REQ_MAIL_FROM"; fi
-MAIL="${MAIL:-log}"
-MAIL_FROM="${MAIL_FROM:-no-reply@$DOMAIN}"
+if [ -n "$REQ_SOURCE_URL" ]; then remember SOURCE_URL "$REQ_SOURCE_URL"; SOURCE_URL="$REQ_SOURCE_URL"; fi
+: "${SOURCE_URL:?set SOURCE_URL (where the source code is published; AGPL-3.0)}"
 
 # set_env FILE KEY VALUE: replace or append KEY=VALUE (value written as given); prints
 # "changed" when the file changed.
@@ -140,25 +129,11 @@ changes+=$(set_env "$L" APP_URL "\"https://$DOMAIN\"")
 changes+=$(set_env "$L" SUPER_ADMINS "\"$ADMIN_EMAIL\"")
 # People join by invitation only (the Super Admin creates organizations; admins invite).
 changes+=$(set_env "$L" APP_ENABLE_REGISTRATION '"off"')
-changes+=$(set_env "$L" TIMEPILOT_SOURCE_URL "\"${TIMEPILOT_SOURCE_URL:-https://github.com/saquibIra/Ira-Tracker}\"")
-changes+=$(set_env "$L" MAIL_FROM_ADDRESS "\"$MAIL_FROM\"")
+changes+=$(set_env "$L" TIMEPILOT_SOURCE_URL "\"$SOURCE_URL\"")
+# Email is off: messages go to the log; admins copy and share the links instead.
+changes+=$(set_env "$L" MAIL_MAILER '"log"')
+changes+=$(set_env "$L" MAIL_FROM_ADDRESS "\"no-reply@$DOMAIN\"")
 changes+=$(set_env "$L" MAIL_FROM_NAME '"Time Pilot"')
-if [ "$MAIL" = smtp ]; then
-  : "${SMTP_HOST:?MAIL=smtp needs SMTP_HOST}"
-  port="${SMTP_PORT:-587}"
-  changes+=$(set_env "$L" MAIL_MAILER '"smtp"')
-  changes+=$(set_env "$L" MAIL_HOST "\"$SMTP_HOST\"")
-  changes+=$(set_env "$L" MAIL_PORT "\"$port\"")
-  changes+=$(set_env "$L" MAIL_USERNAME "\"${SMTP_USERNAME:-}\"")
-  if [ "$port" = 465 ]; then scheme=smtps; else scheme=smtp; fi
-  changes+=$(set_env "$L" MAIL_SCHEME "\"$scheme\"")
-  if [ -n "$SMTP_PASSWORD" ]; then
-    log "updating the SMTP password"
-    changes+=$(set_env "$L" MAIL_PASSWORD "'$SMTP_PASSWORD'")
-  fi
-else
-  changes+=$(set_env "$L" MAIL_MAILER '"log"')
-fi
 if [ -n "$changes" ]; then RECREATE_WEB=1; fi
 
 # ---- 3. autotrack.env: AI settings (created once) -------------------------------------
@@ -237,7 +212,6 @@ cat >/etc/cron.d/time-pilot-backup <<EOF
 30 2 * * * root $HERE/backup.sh >>$DATA/backups/backup.log 2>&1
 EOF
 chmod 644 /etc/cron.d/time-pilot-backup
-rm -f /etc/cron.d/time-pilot-onboard /etc/cron.d/ira-tracker-onboard # self-registration is gone
 
 docker image prune -f >/dev/null
-log "ready: https://$DOMAIN  (Super Admin panel: https://$DOMAIN/admin, email: $MAIL)"
+log "ready: https://$DOMAIN  (Super Admin panel: https://$DOMAIN/admin)"

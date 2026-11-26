@@ -10,11 +10,11 @@ cd tests/e2e && TP_SUPERADMIN_EMAIL=superadmin@timepilot.local TP_SUPERADMIN_PAS
 
 | # | Who | Do this | Expect |
 |---|-----|---------|--------|
-| A1 | Super Admin | http://localhost:8000 → sign in → http://localhost:8000/admin → **Organizations → New organization**: "Acme Studio", admin "Ada Admin", `ada@mailinator.com` | "Organization created"; you are **not** a member of Acme Studio |
-| A2 | — | Mailpit (http://localhost:8025) → "Acme Studio is ready on Time Pilot" → **Set your password** | Welcome page; set a password → dashboard with "Your organization is ready" |
+| A1 | Super Admin | http://localhost:8000 → sign in → http://localhost:8000/admin → **Organizations → New organization**: "Acme Studio", admin "Ada Admin", `ada@example.com` | "Organization created" and the admin's password link with a copy button; you are **not** a member of Acme Studio |
+| A2 | — | Open the copied link in a private window | Welcome page; set a password → dashboard with "Your organization is ready" |
 | A3 | Admin | **Projects → Create Project**: "Acme – POS Revamp" (tasks Backend, Frontend), "Acme – Mobile App", "Internal" (tasks Meetings, non-billable) | Projects listed, visible to the organization |
-| A4 | Admin | **Members → Invite member**: `eng@mailinator.com`, Employee | Invitation listed as pending |
-| A5 | Engineer | Mailpit → "Join Acme Studio on Time Pilot" → **Accept invitation** (in a private window) | "Join Acme Studio" page; choose name and password → dashboard; the engineer belongs only to Acme Studio |
+| A4 | Admin | **Members → Invite member**: `eng@example.com`, Employee | The invite link opens with **Copy link**; the invitation is listed as pending; its menu has **Copy invite link** |
+| A5 | Engineer | Open the copied invite link (in a private window) | "Join Acme Studio" page; choose name and password → dashboard; the engineer belongs only to Acme Studio |
 | A6 | Engineer | Open the same invitation link again | Signs in or says the account exists; no second account |
 
 ## Part B — Desktop app as the engineer

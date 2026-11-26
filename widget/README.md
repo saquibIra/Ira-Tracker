@@ -7,7 +7,7 @@ cd server/local
 docker compose up -d
 ```
 
-Check http://localhost:8000 loads. First run, Super Admin and sign-in clients: [server/local/readme.md](../server/local/readme.md). Create a test organization and an engineer through invitations (emails appear in Mailpit, http://localhost:8025), or run the end-to-end test.
+Check http://localhost:8000 loads. First run, Super Admin and sign-in clients: [server/local/readme.md](../server/local/readme.md). Create a test organization and an engineer through invitation links (copied in the app), or run the end-to-end test.
 
 ## 2. Start the app in dev mode
 

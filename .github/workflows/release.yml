@@ -32,8 +32,15 @@ jobs:
       - run: npm ci
       - name: Build installer
         env:
-          VITE_TIMEPILOT_SERVER_URL: ${{ vars.TIMEPILOT_SERVER_URL || 'https://tracker.aasnatech.com' }}
-        run: npm run tauri build -- --bundles nsis
+          VITE_TIMEPILOT_SERVER_URL: ${{ vars.TIMEPILOT_SERVER_URL }}
+        shell: bash
+        run: |
+          # The server the app signs in to is configuration, never a default in the code.
+          if [ -z "$VITE_TIMEPILOT_SERVER_URL" ]; then
+            echo "::error::Set the repository variable TIMEPILOT_SERVER_URL (Settings > Secrets and variables > Actions > Variables), e.g. https://time.example.com"
+            exit 1
+          fi
+          npm run tauri build -- --bundles nsis
       - name: Name the installer
         shell: bash
         run: cp src-tauri/target/release/bundle/nsis/*-setup.exe TimePilot-windows.exe

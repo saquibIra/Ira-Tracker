@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
  *
  *   TP_SUPERADMIN_EMAIL=... TP_SUPERADMIN_PASSWORD=... npx playwright test
  *
- * TP_BASE_URL, TP_AUTOTRACK_URL and TP_MAILPIT_URL point it elsewhere.
+ * TP_BASE_URL and TP_AUTOTRACK_URL point it elsewhere (e.g. production).
  */
 export default defineConfig({
     testDir: '.',

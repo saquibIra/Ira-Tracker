@@ -30,7 +30,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "shortDescription": "Ira time tracker",
+    "shortDescription": "Time Pilot time tracker",
     "macOS": {
       "minimumSystemVersion": "13.0"
     }

@@ -15,7 +15,7 @@ return [
     /*
      * AGPL-3.0 section 13: where people using this modified solidtime get its source code.
      */
-    'source_url' => env('TIMEPILOT_SOURCE_URL', 'https://github.com/saquibIra/Ira-Tracker'),
+    'source_url' => (string) env('TIMEPILOT_SOURCE_URL', ''), // set by the installer (SOURCE_URL)
 
     /*
      * How long the "set your password" link for a new organization admin stays valid.

@@ -9,15 +9,16 @@ Working notes for Claude Code on **Time Pilot**, a commercial time-tracking SaaS
 - `widget/` — Time Pilot desktop app, Tauri 2 tray app. Rust core (`src-tauri/src`) owns all state; the TypeScript UI (`src/main.ts`) only renders windows and calls commands. Identifier `com.timepilot.desktop`.
 - `server/web/` — the **Time Pilot web app: a fork of solidtime (AGPL-3.0)**, built as the official `solidtime/solidtime:<version>` image plus `overlay/` (added or replaced files) and `patches.mjs` (small text edits that must match exactly, or the build fails). `upstream/` holds build configs the published image leaves out, copied from the same tag. Updating solidtime = change `SOLIDTIME_VERSION` in the Dockerfile, build, fix what the build reports. See server/web/README.md.
 - `server/autotrack/` — FastAPI service for AI auto-tracking (AI provider `TIMEPILOT_AI_PROVIDER`: `gemini` in production, or `anthropic`; structured logs with request ids): auth via the caller's token, policy, project keyword hints (settings page at `/admin`, browser sign-in), `POST /v1/classify`, usage/cost log, day submissions (W8), `GET /v1/client` (OAuth client ids for the desktop app and the settings page). Holds the only AI key. Reconciliation (R1–R6) goes here too.
-- `server/local/` — local stack: the fork, Postgres, Mailpit (catches every email, http://localhost:8025) and Autotrack. `TRUSTED_HOSTS="app"` lets Autotrack call the web app inside Docker.
-- `deploy/linux/` — **production** (https://tracker.aasnatech.com): `deploy.sh` (Mac → rsync over SSH; the server cannot reach GitHub but can reach Docker Hub and npm, so the web image is built there) runs `install.sh`: settings and secrets in `/opt/timepilot-data`, Compose project `timepilot`, migrations, the Super Admin (`ADMIN_EMAIL`), the OAuth clients (`timepilot:oauth-clients`), email (`MAIL=log|smtp`), nightly `backup.sh`. Guide: `docs/DEPLOY_LINUX.md`.
+- `server/local/` — local stack: the fork, Postgres and Autotrack; email off (`MAIL_MAILER=log`) as in production. `TRUSTED_HOSTS="app"` lets Autotrack call the web app inside Docker.
+- `deploy/linux/` — **production** (https://tracker.aasnatech.com): `deploy.sh` (Mac → rsync over SSH; the server cannot reach GitHub but can reach Docker Hub and npm, so the web image is built there) runs `install.sh`: settings and secrets in `/opt/timepilot-data`, Compose project `timepilot`, migrations, the Super Admin (`ADMIN_EMAIL`), the OAuth clients (`timepilot:oauth-clients`), `SOURCE_URL` (AGPL source link; `deploy.sh` derives it from the git remote), email off (`MAIL_MAILER=log`), nightly `backup.sh`. Guide: `docs/DEPLOY_LINUX.md`.
 - `tests/e2e/` — Playwright test of the whole onboarding in a real browser against the local stack.
 - `scripts/brand/make_brand.py` — generates every logo, favicon and app/tray icon from one drawing.
 
 ## Platform flows (Time Pilot)
 
-- **Super Admin** (`SUPER_ADMINS`, the installer's `ADMIN_EMAIL`): `/admin` (Filament) → Organizations → **New organization** (`TimePilotOnboardingService`): creates the organization with its admin as **owner** (new user without password, or an existing account) and emails a set-password link (`TimePilotJoinController::welcomeUrl`: signed, 7 days, single use because its check value covers the password hash). **Resend admin email** sends a new one. The Super Admin never becomes a member of customer organizations.
-- **Invitations:** the admin invites under Members (solidtime). The emailed link (`organization-invitations.accept`, signed) sends a person without an account to `/join/{invitation}` (signed, 2 h): they choose a name and password and the account is created **verified** (the link proves the address) with only that organization. Existing accounts sign in and are added.
+- **Super Admin** (`SUPER_ADMINS`, the installer's `ADMIN_EMAIL`): `/admin` (Filament) → Organizations → **New organization** (`TimePilotOnboardingService`): creates the organization with its admin as **owner** (new user without password, or an existing account), then shows the admin's set-password link to copy and send (`TimePilotJoinController::welcomeUrl`: signed, 7 days, single use because its check value covers the password hash; `TimePilotPasswordLink`). **Admin link** shows a new one later; **Password link** on Users is the same link for anyone who forgot their password (no email reset while email is off). The Super Admin never becomes a member of customer organizations.
+- **Email is off** (`MAIL_MAILER=log`; `TimePilotOnboardingService::mailEnabled()`, shared to the frontend as `timepilot.mail`): nothing depends on email; email-only buttons (Resend admin email, Resend Invitation, Forgot password) are hidden. Real SMTP comes later; note the production network blocks outgoing SMTP ports (587/465/2525), so it will need the hosting provider to open them or an HTTPS email API.
+- **Invitations:** the admin invites under Members (solidtime); the invite link opens right away to copy and send, and **Copy invite link** on a pending invitation shows it again (`GET /api/v1/organizations/{org}/invitations/{id}/link`, permission `invitations:resend`). The link (`organization-invitations.accept`, signed, 90 days) sends a person without an account to `/join/{invitation}` (signed, 2 h): they choose a name and password and the account is created **verified** (the link proves the address) with only that organization. Existing accounts sign in and are added.
 - **Sign-up is invite-only** (`APP_ENABLE_REGISTRATION=off`; `/register` redirects to sign-in; the sign-in page says to ask the admin).
 - **Desktop sign-in:** OAuth 2.0 authorization code + PKCE (`widget/src-tauri/src/oauth.rs`) with a loopback redirect `http://127.0.0.1:<random port>/callback` (RFC 8252; Passport ignores the port for loopback). Client id from `GET <server>/autotrack/v1/client`. First-party clients (`TIMEPILOT_FIRST_PARTY_CLIENTS`) skip the consent screen; any other client still sees it. Access tokens 12 h, refresh tokens 90 days (patched in `AuthServiceProvider`); the app renews an hour before expiry and asks to sign in again only when the refresh token stops working (nothing local is deleted). The session (JSON) lives only in the OS keychain (service `com.timepilot.desktop`, account `session`).
 - **Settings page** (`/autotrack/admin/`): same browser sign-in with its own public client; the code exchange runs on the service (`POST /v1/admin/oauth/token`), only the access token reaches the tab (sessionStorage).
@@ -26,8 +27,8 @@ Working notes for Claude Code on **Time Pilot**, a commercial time-tracking SaaS
 ## Commands
 
 ```bash
-# local stack (web fork + Postgres + Mailpit + Autotrack)
-cd server/local && docker compose up -d --build              # http://localhost:8000, mail: http://localhost:8025
+# local stack (web fork + Postgres + Autotrack)
+cd server/local && docker compose up -d --build              # http://localhost:8000
 docker compose exec app php artisan migrate --force
 docker compose exec app php artisan timepilot:oauth-clients --admin-redirect=http://localhost:8010/admin/
 docker compose exec scheduler php artisan tinker --execute='...'   # inspect data
@@ -103,7 +104,7 @@ Rust is installed via rustup; run `source ~/.cargo/env` in a fresh shell if `car
 ## Gotchas
 
 - solidtime `APP_ENV` must stay `production`; `local` crashes on missing Telescope.
-- Email: Mailinator only receives mail and silently drops mail sent straight from the server (no SPF/reverse DNS). Production email needs an SMTP relay (Brevo etc.: `MAIL=smtp`); Mailinator addresses then work for testing.
+- Email (for later): Mailinator only receives mail and drops mail sent straight from the server (no SPF/reverse DNS), and the production network blocks outgoing SMTP; a relay reachable over HTTPS (e.g. Brevo's API) or an unblocked port is needed.
 - Browsers may report legacy time zones (`Asia/Calcutta`); the join pages map them like solidtime's sign-up (`TimezoneService`).
 - In dev, every rebuild changes the binary signature, so macOS asks for keychain access again ("Always Allow").
 - Auto-start registers only in release builds.

@@ -14,7 +14,7 @@ The code is copied from a Mac with rsync (the server cannot reach GitHub). The w
 ## Requirements
 
 - **Server:** 2 vCPU, 4 GB RAM minimum (8 GB recommended), 40 GB disk, Ubuntu 22.04+ or Debian 12, Docker with Compose v2.
-- **Network:** inbound 80 and 443; outbound HTTPS to Docker Hub, npm, PyPI, Let's Encrypt and the AI provider; outbound SMTP (587) to the email service.
+- **Network:** inbound 80 and 443; outbound HTTPS to Docker Hub, npm, Let's Encrypt and the AI provider.
 - **DNS:** an A record `<domain> → server IP` (for aasnatech.com: GoDaddy → My Products → DNS).
 
 ## Install or update (from the Mac, in the repository root)
@@ -25,7 +25,7 @@ HOST=<user>@<server-ip> KEY=<ssh-key.pem> \
   GEMINI_API_KEY_FILE=<file with the Gemini key> deploy/linux/deploy.sh
 ```
 
-`DOMAIN` and `ADMIN_EMAIL` are needed the first time only; later updates are `HOST=… KEY=… deploy/linux/deploy.sh`.
+`DOMAIN` and `ADMIN_EMAIL` are needed the first time only; later updates are `HOST=… KEY=… deploy/linux/deploy.sh`. `SOURCE_URL` (where the source code is published, required by the AGPL) defaults to this checkout's GitHub address.
 
 **The first run creates an empty platform:**
 
@@ -36,33 +36,20 @@ HOST=<user>@<server-ip> KEY=<ssh-key.pem> \
 5. The sign-in clients of the desktop app and the settings page, with their ids written into both services.
 6. A nightly backup at 02:30.
 
-Sign-up is by invitation only. Secrets (the AI key, the SMTP password) travel to the server on SSH's input stream, never on a command line.
+Sign-up is by invitation only. Secrets (the AI key) travel to the server on SSH's input stream, never on a command line.
 
 ## Onboarding customers
 
 1. Sign in at `https://<domain>` as the Super Admin, open `https://<domain>/admin` → **Organizations** → **New organization**: organization name, admin name and email, currency.
-2. The admin gets an email with a link to set a password (valid 7 days, works once) and becomes the owner. If it expires: **Resend admin email**.
-3. The admin adds projects and invites people under **Members**. Each person gets an email, sets a password on the link and installs the desktop app from `https://<domain>/download/`.
+2. The admin's link to set a password opens right away (valid 7 days, works once): **Copy** it and send it to the admin (email, chat, …). The admin becomes the owner. Lost or expired: **Admin link**.
+3. The admin adds projects and invites people under **Members**. After **Invite member** the invite link opens to copy and send; **Copy invite link** on a pending invitation shows it again. Each person sets a password on the link and installs the desktop app from `https://<domain>/download/`.
+4. Forgotten password: the Super Admin opens `https://<domain>/admin` → **Users** → **Password link** and sends it.
 
 The Super Admin does not become a member of customer organizations.
 
 ## Email
 
-Invitations and password emails need an email service. Until one is configured (`MAIL=log`), emails are only written to the log and nobody receives them.
-
-**Brevo** (free for 300 emails a day):
-
-1. Create an account at brevo.com; under **Senders, domains & dedicated IPs → Domains**, add the sending domain and the DNS records it shows (SPF, DKIM, DMARC) at the DNS provider.
-2. Under **SMTP & API → SMTP**, create an SMTP key and note the login.
-3. Save the key to a file on the Mac, then deploy:
-
-```bash
-HOST=… KEY=… MAIL=smtp SMTP_HOST=smtp-relay.brevo.com SMTP_PORT=587 \
-  SMTP_USERNAME=<brevo login> MAIL_FROM=no-reply@<your domain> \
-  SMTP_PASSWORD_FILE=<file with the SMTP key> deploy/linux/deploy.sh
-```
-
-Any other SMTP service works the same way. **Testing with Mailinator:** invite `<anything>@mailinator.com` and open the inbox at mailinator.com. Mailinator only receives mail and drops mail sent straight from a server without SPF or reverse DNS, so it needs the SMTP service above too.
+Email is off: messages are only written to the log, and the Super Admin and the organization admins copy and send the links themselves (see above). Real email comes later. Note that this server's network blocks outgoing SMTP (ports 587, 465 and 2525), so that needs the hosting provider to open the port, or an email service with an HTTPS API.
 
 ## AI key
 

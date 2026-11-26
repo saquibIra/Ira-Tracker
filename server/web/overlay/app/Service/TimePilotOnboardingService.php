@@ -15,7 +15,9 @@ use Illuminate\Support\Str;
 
 /**
  * Time Pilot: the Super Admin creates a customer organization together with its admin.
- * The admin becomes the owner; the Super Admin never becomes a member.
+ * The admin becomes the owner; the Super Admin never becomes a member. The admin sets a
+ * password from TimePilotJoinController::welcomeUrl(), shared by the Super Admin (or
+ * emailed, when email is on).
  */
 class TimePilotOnboardingService
 {
@@ -53,9 +55,20 @@ class TimePilotOnboardingService
             return $organization;
         });
 
-        $this->sendAdminEmail($organization);
+        if (self::mailEnabled()) {
+            $this->sendAdminEmail($organization);
+        }
 
         return $organization;
+    }
+
+    /**
+     * Whether email is delivered. While it is off (MAIL_MAILER=log), the Super Admin and the
+     * organization admins copy the set-password and invitation links and share them.
+     */
+    public static function mailEnabled(): bool
+    {
+        return ! in_array(config('mail.default'), ['log', 'array'], true);
     }
 
     /**
