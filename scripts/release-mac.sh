@@ -4,7 +4,7 @@
 #   TIMEPILOT_SERVER_URL=https://time.example.com scripts/release-mac.sh            # build only
 #   TIMEPILOT_SERVER_URL=... PUBLISH_HOST=ubuntu@1.2.3.4 PUBLISH_KEY=~/key.pem scripts/release-mac.sh  # Linux server
 #
-# - The server URL is baked in, so engineers only paste their API token.
+# - The server URL is baked in, so people only click Sign in (browser sign-in).
 # - Signed with the "Ira Tracker Local Signing" identity from this Mac's keychain, so the
 #   Screen Recording permission survives updates. (With an Apple Developer ID, set
 #   SIGNING_IDENTITY to it and macOS shows no warning on first open.)
